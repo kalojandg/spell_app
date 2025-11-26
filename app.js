@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'spellbook-state-v1';
+const STORAGE_KEY = 'spellbook-state-v2';
 
 const defaultState = {
   caster: {
@@ -14,7 +14,7 @@ const defaultState = {
     4: { max: 1, used: 0 },
   },
   spells: {
-    // [index]: { data, known, prepared }
+    // [index]: { ref, data, known, prepared }
   },
   ui: {
     selectedSpellIndex: null,
@@ -23,6 +23,8 @@ const defaultState = {
 };
 
 let state = loadState();
+
+/* ---------- Persistence ---------- */
 
 function loadState() {
   try {
@@ -55,7 +57,8 @@ function mergeDeep(base, extra) {
   return base;
 }
 
-// Derived helpers
+/* ---------- Derived ---------- */
+
 function getSpellAttackBonus() {
   return state.caster.abilityMod + state.caster.profBonus;
 }
@@ -63,7 +66,8 @@ function getSpellSaveDC() {
   return 8 + state.caster.abilityMod + state.caster.profBonus;
 }
 
-// Mutations
+/* ---------- Mutations ---------- */
+
 function updateCaster(partial) {
   state.caster = { ...state.caster, ...partial };
   saveState();
@@ -92,9 +96,24 @@ function recoverSlot(level) {
   }
 }
 
-function upsertSpell(index, data) {
+function upsertSpellRef(index, ref) {
   if (!state.spells[index]) {
     state.spells[index] = {
+      ref,
+      data: null,
+      known: false,
+      prepared: false,
+    };
+  } else {
+    state.spells[index].ref = ref;
+  }
+  saveState();
+}
+
+function upsertSpellData(index, data) {
+  if (!state.spells[index]) {
+    state.spells[index] = {
+      ref: { index, name: data.name, url: `/api/spells/${index}` },
       data,
       known: false,
       prepared: false,
@@ -130,7 +149,8 @@ function setFilterLevel(level) {
   saveState();
 }
 
-// Rendering
+/* ---------- Rendering ---------- */
+
 function renderCaster() {
   const root = document.getElementById('caster-root');
   const { className, level, abilityMod, profBonus } = state.caster;
@@ -214,50 +234,69 @@ function renderSlots() {
     </div>
   `;
 
-  root.addEventListener('click', e => {
-    const row = e.target.closest('.slot-row');
-    if (!row) return;
-    const level = Number(row.dataset.level);
-    if (e.target.classList.contains('slot-inc')) {
-      useSlot(level);
-      renderSlots();
-    } else if (e.target.classList.contains('slot-dec')) {
-      recoverSlot(level);
-      renderSlots();
-    }
-  }, { once: true });
+  root.addEventListener(
+    'click',
+    e => {
+      const row = e.target.closest('.slot-row');
+      if (!row) return;
+      const level = Number(row.dataset.level);
+      if (e.target.classList.contains('slot-inc')) {
+        useSlot(level);
+        renderSlots();
+      } else if (e.target.classList.contains('slot-dec')) {
+        recoverSlot(level);
+        renderSlots();
+      }
+    },
+    { once: true }
+  );
 }
 
 function renderSpells() {
   const root = document.getElementById('spells-root');
-  const list = Object.entries(state.spells)
-    .map(([index, s]) => ({ index, ...s }))
-    .filter(s => s.data && typeof s.data.level === 'number');
+  const list = Object.entries(state.spells).map(([index, s]) => ({
+    index,
+    ...s,
+  }));
 
   const level = state.ui.filterLevel;
-  const filtered = list.filter(s => s.data.level === level);
+  const filtered = list.filter(s => {
+    if (s.data && typeof s.data.level === 'number') {
+      return s.data.level === level;
+    }
+    // ако още нямаме data, приемаме, че са за избраното ниво (идват от endpoint за това ниво)
+    return true;
+  });
 
   if (filtered.length === 0) {
     root.innerHTML = '<div class="small">Няма заредени магии за това ниво.</div>';
     return;
   }
 
-  filtered.sort((a, b) => a.data.name.localeCompare(b.data.name));
+  filtered.sort((a, b) => {
+    const nameA = (a.data?.name || a.ref?.name || a.index).toLowerCase();
+    const nameB = (b.data?.name || b.ref?.name || b.index).toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
 
   root.innerHTML = `
     <div class="spells-container">
       ${filtered
         .map(s => {
           const d = s.data;
-          const tags = [
-            `Level ${d.level}`,
-            d.school && d.school.name ? d.school.name : null,
-          ].filter(Boolean);
+          const name = d?.name || s.ref?.name || s.index;
+          const lvl = d?.level ?? level;
+          const schoolName = d?.school?.name || '';
+
+          const tags = [`Level ${lvl}`];
+          if (schoolName) tags.push(schoolName);
+          const conc = d?.concentration ? ' · Concentration' : '';
+          const rit = d?.ritual ? ' · Ritual' : '';
 
           return `
             <div class="spell-item" data-index="${s.index}">
               <div class="spell-header">
-                <button class="spell-name-btn" type="button">${d.name}</button>
+                <button class="spell-name-btn" type="button">${name}</button>
                 <div class="spell-flags">
                   <button class="btn-xs btn-known ${s.known ? 'badge known' : ''}">
                     Known
@@ -268,9 +307,7 @@ function renderSpells() {
                 </div>
               </div>
               <div class="spell-tags">
-                ${tags.join(' · ')}
-                ${d.concentration ? ' · Concentration' : ''}
-                ${d.ritual ? ' · Ritual' : ''}
+                ${tags.join(' · ')}${conc}${rit}
               </div>
             </div>
           `;
@@ -279,33 +316,42 @@ function renderSpells() {
     </div>
   `;
 
-  root.querySelector('.spells-container').addEventListener('click', e => {
-    const item = e.target.closest('.spell-item');
-    if (!item) return;
-    const index = item.dataset.index;
+  root.querySelector('.spells-container').addEventListener(
+    'click',
+    e => {
+      const item = e.target.closest('.spell-item');
+      if (!item) return;
+      const index = item.dataset.index;
 
-    if (e.target.classList.contains('spell-name-btn')) {
-      selectSpell(index);
-      renderDetails();
-    } else if (e.target.classList.contains('btn-known')) {
-      toggleSpellKnown(index);
-      renderSpells();
-    } else if (e.target.classList.contains('btn-prepared')) {
-      toggleSpellPrepared(index);
-      renderSpells();
-    }
-  }, { once: true });
+      if (e.target.classList.contains('spell-name-btn')) {
+        handleSelectSpell(index);
+      } else if (e.target.classList.contains('btn-known')) {
+        toggleSpellKnown(index);
+        renderSpells();
+      } else if (e.target.classList.contains('btn-prepared')) {
+        toggleSpellPrepared(index);
+        renderSpells();
+      }
+    },
+    { once: true }
+  );
 }
 
 function renderDetails() {
   const root = document.getElementById('details-root');
   const index = state.ui.selectedSpellIndex;
-  if (!index || !state.spells[index] || !state.spells[index].data) {
+  if (!index || !state.spells[index]) {
     root.textContent = 'Няма избрана магия.';
     return;
   }
-  const d = state.spells[index].data;
+  const entry = state.spells[index];
 
+  if (!entry.data) {
+    root.textContent = 'Зареждане на детайли...';
+    return;
+  }
+
+  const d = entry.data;
   const lines = [];
 
   lines.push(`${d.name} (Level ${d.level} ${d.school?.name || ''})`);
@@ -332,11 +378,14 @@ function renderDetails() {
   root.textContent = lines.join('\n');
 }
 
-// API
+/* ---------- API ---------- */
+
 const API_BASE = 'https://www.dnd5eapi.co';
 
-async function fetchSpellsByClass(className) {
-  const res = await fetch(`${API_BASE}/api/classes/${className}/spells`);
+// нов endpoint: /api/classes/{index}/levels/{spell_level}/spells
+async function fetchClassSpellsAtLevel(className, level) {
+  const url = `${API_BASE}/api/classes/${className}/levels/${level}/spells`;
+  const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`API error: ${res.status}`);
   }
@@ -359,16 +408,10 @@ async function loadSpellsForCurrentFilter() {
   const level = state.ui.filterLevel;
 
   try {
-    const list = await fetchSpellsByClass(className);
-    const detailsList = await Promise.all(
-      list.map(item => fetchSpellDetails(item.index))
-    );
-    detailsList
-      .filter(d => typeof d.level === 'number' && d.level === level)
-      .forEach(d => {
-        upsertSpell(d.index, d);
-      });
-
+    const refs = await fetchClassSpellsAtLevel(className, level);
+    refs.forEach(r => {
+      upsertSpellRef(r.index, r);
+    });
     renderSpells();
   } catch (err) {
     console.error(err);
@@ -376,26 +419,60 @@ async function loadSpellsForCurrentFilter() {
   }
 }
 
-// Global init
+async function ensureSpellDetails(index) {
+  const entry = state.spells[index];
+  if (!entry || entry.data) return;
+
+  try {
+    const d = await fetchSpellDetails(index);
+    upsertSpellData(index, d);
+    if (state.ui.selectedSpellIndex === index) {
+      renderDetails();
+      renderSpells();
+    }
+  } catch (err) {
+    console.error(err);
+    const root = document.getElementById('details-root');
+    root.textContent = 'Грешка при зареждане на детайли.';
+  }
+}
+
+/* ---------- Handlers ---------- */
+
+function handleSelectSpell(index) {
+  selectSpell(index);
+  renderDetails();
+  ensureSpellDetails(index);
+}
+
+/* ---------- Global init ---------- */
+
 function renderAll() {
   renderCaster();
   renderSlots();
   renderSpells();
   renderDetails();
 
-  // filter dropdown + button
   const filterEl = document.getElementById('filter-level');
   filterEl.value = String(state.ui.filterLevel);
-  filterEl.addEventListener('change', e => {
-    const lvl = Number(e.target.value) || 0;
-    setFilterLevel(lvl);
-    renderSpells();
-  }, { once: true });
+  filterEl.addEventListener(
+    'change',
+    e => {
+      const lvl = Number(e.target.value) || 0;
+      setFilterLevel(lvl);
+      renderSpells();
+    },
+    { once: true }
+  );
 
   const btnLoad = document.getElementById('btn-load-spells');
-  btnLoad.addEventListener('click', () => {
-    loadSpellsForCurrentFilter();
-  }, { once: true });
+  btnLoad.addEventListener(
+    'click',
+    () => {
+      loadSpellsForCurrentFilter();
+    },
+    { once: true }
+  );
 }
 
 document.addEventListener('DOMContentLoaded', renderAll);
