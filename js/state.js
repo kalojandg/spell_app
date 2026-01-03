@@ -82,6 +82,7 @@ function setSlot(level, payload) {
 function useSlot(level) {
   const s = state.slots[level];
   if (!s) return;
+  // Валидация: не може да използваме повече от максималните
   if (s.used < s.max) {
     s.used++;
     saveState();
@@ -91,6 +92,7 @@ function useSlot(level) {
 function recoverSlot(level) {
   const s = state.slots[level];
   if (!s) return;
+  // Валидация: не може да бъде по-малко от 0
   if (s.used > 0) {
     s.used--;
     saveState();

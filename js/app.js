@@ -2,7 +2,7 @@
 
 async function renderAll() {
   await renderCaster();
-  renderSlots();
+  await renderSlots();
   renderSpells();
   renderDetails();
 

@@ -55,11 +55,13 @@ async function renderCaster() {
   root.querySelector('#caster-class').addEventListener('change', async e => {
     updateCaster({ className: e.target.value });
     await renderCaster();
+    await renderSlots();
   });
   root.querySelector('#caster-level').addEventListener('change', async e => {
     const val = Number(e.target.value) || 1;
     updateCaster({ level: val });
     await renderCaster();
+    await renderSlots();
   });
   root.querySelector('#caster-ability-mod').addEventListener('change', e => {
     const val = Number(e.target.value) || 0;
