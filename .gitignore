@@ -6,4 +6,6 @@ coverage/
 test-results/
 playwright-report/
 playwright/.cache/
+# Но запазваме results.json за анализ
+!test-results/results.json
 

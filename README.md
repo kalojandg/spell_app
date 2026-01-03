@@ -48,7 +48,17 @@ npm run test:headed
 npm run test:debug
 ```
 
+За да видиш резултатите от последния тест (от файл):
+
+```bash
+npm run test:results
+```
+
 **Забележка:** Playwright автоматично ще пусне сървъра преди тестовете, но можеш да го пуснеш ръчно с `npm run dev` ако искаш да виждаш ап-а докато пишеш тестове.
+
+**Логиране:** След всеки тест, резултатите се записват в:
+- `test-results/results.json` - JSON формат с пълни детайли
+- `playwright-report/index.html` - HTML репорт (отвори с `npx playwright show-report`)
 
 ## Структура
 
