@@ -7,15 +7,28 @@ function renderSpells() {
 
   const level = state.ui.filterLevel;
   const filtered = list.filter(s => {
+    // Ако магията е отворена в акордеона, винаги я показваме
+    if (state.ui.expandedSpellIndex === s.index) {
+      return true;
+    }
+    
+    // Ако имаме данни, проверяваме нивото
     if (s.data && typeof s.data.level === 'number') {
       return s.data.level === level;
     }
-    // ако още нямаме data, приемаме, че са за избраното ниво (идват от endpoint за това ниво)
-    return true;
+    
+    // Ако нямаме данни, проверяваме дали е заредена за текущото ниво
+    // Това гарантира че магиите остават видими докато се зареждат детайлите
+    if (s.loadedForLevel !== undefined) {
+      return s.loadedForLevel === level;
+    }
+    
+    // Ако няма нито данни, нито loadedForLevel, не показваме магията
+    return false;
   });
 
   if (filtered.length === 0) {
-    root.innerHTML = '<div class="small">Няма заредени магии за това ниво.</div>';
+    root.innerHTML = '<div class="small">Изберете ниво за да заредите магии.</div>';
     return;
   }
 
@@ -39,15 +52,18 @@ function renderSpells() {
           const conc = d?.concentration ? ' · Concentration' : '';
           const rit = d?.ritual ? ' · Ritual' : '';
 
+          const isExpanded = state.ui.expandedSpellIndex === s.index;
+          const hasData = !!d;
+
           return `
-            <div class="spell-item" data-index="${s.index}">
-              <div class="spell-header">
-                <button class="spell-name-btn" type="button">${name}</button>
+            <div class="spell-item ${isExpanded ? 'spell-expanded' : ''}" data-index="${s.index}">
+              <div class="spell-header" data-spell-index="${s.index}" style="cursor: pointer;">
+                <span class="spell-name">${name}</span>
                 <div class="spell-flags">
-                  <button class="btn-xs btn-known ${s.known ? 'badge known' : ''}">
+                  <button class="btn-xs btn-known ${s.known ? 'badge known' : ''}" type="button">
                     Known
                   </button>
-                  <button class="btn-xs btn-prepared ${s.prepared ? 'badge prepared' : ''}">
+                  <button class="btn-xs btn-prepared ${s.prepared ? 'badge prepared' : ''}" type="button">
                     Prep
                   </button>
                 </div>
@@ -55,6 +71,11 @@ function renderSpells() {
               <div class="spell-tags">
                 ${tags.join(' · ')}${conc}${rit}
               </div>
+              ${isExpanded ? `
+                <div class="spell-details">
+                  ${hasData ? renderSpellDetailsContent(d) : '<div class="small">Зареждане на детайли...</div>'}
+                </div>
+              ` : ''}
             </div>
           `;
         })
@@ -62,38 +83,112 @@ function renderSpells() {
     </div>
   `;
 
-  root.querySelector('.spells-container').addEventListener(
-    'click',
-    e => {
-      const item = e.target.closest('.spell-item');
-      if (!item) return;
-      const index = item.dataset.index;
+  // Event delegation за всички кликвания
+  // Премахваме стария listener ако съществува, за да избегнем дублиране
+  const container = root.querySelector('.spells-container');
+  if (container) {
+    // Клонираме контейнера за да премахнем старите listeners
+    const newContainer = container.cloneNode(true);
+    container.parentNode.replaceChild(newContainer, container);
+    // Добавяме нов listener
+    newContainer.addEventListener('click', handleSpellContainerClick);
+  }
 
-      if (e.target.classList.contains('spell-name-btn')) {
-        handleSelectSpell(index);
-      } else if (e.target.classList.contains('btn-known')) {
-        toggleSpellKnown(index);
-        renderSpells();
-      } else if (e.target.classList.contains('btn-prepared')) {
-        toggleSpellPrepared(index);
-        renderSpells();
-      }
-    },
-    { once: true }
-  );
+  // Зареждаме детайли за отворената магия ако няма данни
+  const expandedIndex = state.ui.expandedSpellIndex;
+  if (expandedIndex && state.spells[expandedIndex] && !state.spells[expandedIndex].data) {
+    ensureSpellDetails(expandedIndex);
+  }
 }
 
-async function loadSpellsForCurrentFilter() {
+function renderSpellDetailsContent(d) {
+  const lines = [];
+
+  lines.push(`<div class="spell-detail-name">${d.name} (Level ${d.level} ${d.school?.name || ''})</div>`);
+  
+  if (d.casting_time) lines.push(`<div class="spell-detail-line"><strong>Casting Time:</strong> ${d.casting_time}</div>`);
+  if (d.range) lines.push(`<div class="spell-detail-line"><strong>Range:</strong> ${d.range}</div>`);
+  if (d.duration) lines.push(`<div class="spell-detail-line"><strong>Duration:</strong> ${d.duration}</div>`);
+  if (Array.isArray(d.components)) {
+    lines.push(`<div class="spell-detail-line"><strong>Components:</strong> ${d.components.join(', ')}</div>`);
+  }
+  if (d.concentration) lines.push(`<div class="spell-detail-line"><strong>Concentration:</strong> Yes</div>`);
+  if (d.ritual) lines.push(`<div class="spell-detail-line"><strong>Ritual:</strong> Yes</div>`);
+
+  if (Array.isArray(d.desc)) {
+    lines.push(`<div class="spell-detail-desc">${d.desc.join('<br><br>')}</div>`);
+  }
+  if (Array.isArray(d.higher_level) && d.higher_level.length > 0) {
+    lines.push(`<div class="spell-detail-higher"><strong>At Higher Levels:</strong><br>${d.higher_level.join('<br><br>')}</div>`);
+  }
+
+  return lines.join('');
+}
+
+function handleSpellContainerClick(e) {
+  const item = e.target.closest('.spell-item');
+  if (!item) return;
+  const index = item.dataset.index;
+
+  // Кликване на header (но не на бутоните)
+  const header = e.target.closest('.spell-header');
+  if (header && !e.target.classList.contains('btn-known') && !e.target.classList.contains('btn-prepared') && !e.target.closest('button')) {
+    e.stopPropagation();
+    handleToggleSpell(index);
+    return;
+  }
+
+  if (e.target.classList.contains('btn-known')) {
+    e.stopPropagation();
+    toggleSpellKnown(index);
+    renderSpells();
+  } else if (e.target.classList.contains('btn-prepared')) {
+    e.stopPropagation();
+    toggleSpellPrepared(index);
+    renderSpells();
+  }
+}
+
+function handleToggleSpell(index) {
+  const wasExpanded = state.ui.expandedSpellIndex === index;
+  setExpandedSpell(index);
+  renderSpells();
+  // Зареждаме детайли ако няма и магията е отворена
+  if (state.ui.expandedSpellIndex === index && !wasExpanded) {
+    ensureSpellDetails(index);
+  }
+}
+
+async function loadSpellsForCurrentFilter(clearExisting = false) {
   const errorEl = document.getElementById('spells-error');
   errorEl.textContent = '';
   const { className } = state.caster;
   const level = state.ui.filterLevel;
 
+  // Ако трябва да изчистим съществуващите магии, изчистваме само тези от други нива
+  if (clearExisting) {
+    // Изчистваме магиите от други нива, но запазваме тези за текущото ниво
+    Object.keys(state.spells).forEach(index => {
+      const spell = state.spells[index];
+      if (spell.loadedForLevel !== undefined && spell.loadedForLevel !== level) {
+        delete state.spells[index];
+      } else if (spell.data && typeof spell.data.level === 'number' && spell.data.level !== level) {
+        delete state.spells[index];
+      }
+    });
+    saveState();
+  }
+
   try {
     const refs = await fetchClassSpellsAtLevel(className, level);
+    // Затваряме отворената магия при зареждане на нови магии
+    state.ui.expandedSpellIndex = null;
+    
     refs.forEach(r => {
       upsertSpellRef(r.index, r);
     });
+    
+    // Рендерираме акордеона с новите магии
     renderSpells();
   } catch (err) {
     console.error(err);
@@ -103,25 +198,28 @@ async function loadSpellsForCurrentFilter() {
 
 async function ensureSpellDetails(index) {
   const entry = state.spells[index];
-  if (!entry || entry.data) return;
+  if (!entry) return;
+  
+  // Ако вече има данни, просто обновяваме рендера
+  if (entry.data) {
+    if (state.ui.expandedSpellIndex === index) {
+      renderSpells();
+    }
+    return;
+  }
 
   try {
     const d = await fetchSpellDetails(index);
     upsertSpellData(index, d);
-    if (state.ui.selectedSpellIndex === index) {
-      renderDetails();
-      renderSpells();
-    }
+    // Винаги обновяваме рендера след зареждане на данни, за да се покажат детайлите
+    // Магията трябва да остане видима и отворена
+    renderSpells();
   } catch (err) {
     console.error(err);
-    const root = document.getElementById('details-root');
-    root.textContent = 'Грешка при зареждане на детайли.';
+    // Обновяваме рендера дори при грешка, за да покажем съобщение за грешка
+    if (state.ui.expandedSpellIndex === index) {
+      renderSpells();
+    }
   }
-}
-
-function handleSelectSpell(index) {
-  selectSpell(index);
-  renderDetails();
-  ensureSpellDetails(index);
 }
 

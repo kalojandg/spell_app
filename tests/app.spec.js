@@ -259,3 +259,172 @@ test.describe('Spell Slots - Автоматично изчисляване', () 
   });
 });
 
+test.describe('Spells - Акордеон функционалност', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+    // Зареждаме магии за тестване - избираме ниво и чакаме да се заредят
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForTimeout(2000);
+  });
+
+  test('трябва да показва списък с магии', async ({ page }) => {
+    const spellItems = page.locator('.spell-item');
+    await expect(spellItems.first()).toBeVisible();
+  });
+
+  test('трябва да може да отвори магия като кликнеш на хедъра', async ({ page }) => {
+    const firstSpell = page.locator('.spell-item').first();
+    const spellHeader = firstSpell.locator('.spell-header');
+    
+    // Първоначално детайлите не трябва да са видими
+    const detailsBefore = firstSpell.locator('.spell-details');
+    await expect(detailsBefore).toHaveCount(0);
+    
+    // Кликваме на хедъра
+    await spellHeader.click();
+    await page.waitForTimeout(500);
+    
+    // Детайлите трябва да се появят
+    const detailsAfter = firstSpell.locator('.spell-details');
+    await expect(detailsAfter).toBeVisible();
+  });
+
+  test('трябва да може да затвори магия като кликнеш отново на хедъра', async ({ page }) => {
+    const firstSpell = page.locator('.spell-item').first();
+    const spellHeader = firstSpell.locator('.spell-header');
+    const spellName = await firstSpell.locator('.spell-name').textContent();
+    
+    // Отваряме магията
+    await spellHeader.click();
+    await page.waitForTimeout(1000);
+    await expect(firstSpell.locator('.spell-details')).toBeVisible();
+    
+    // Затваряме магията
+    await spellHeader.click();
+    await page.waitForTimeout(500);
+    
+    // Детайлите трябва да изчезнат
+    const details = firstSpell.locator('.spell-details');
+    await expect(details).toHaveCount(0);
+    
+    // Магията трябва да остане видима в списъка след затваряне
+    const spellAfterClose = page.locator('.spell-item').filter({ hasText: spellName });
+    await expect(spellAfterClose).toBeVisible({ timeout: 2000 });
+    await expect(spellAfterClose).not.toHaveClass(/spell-expanded/);
+  });
+
+  test('трябва да може да отвори само една магия наведнъж', async ({ page }) => {
+    const spellItems = page.locator('.spell-item');
+    const firstSpell = spellItems.first();
+    const secondSpell = spellItems.nth(1);
+    
+    // Отваряме първата магия
+    await firstSpell.locator('.spell-header').click();
+    // Чакаме да се зареди и да се покажат детайлите
+    await expect(firstSpell.locator('.spell-details')).toBeVisible({ timeout: 3000 });
+    // Проверяваме че първата магия е отворена
+    await expect(firstSpell).toHaveClass(/spell-expanded/);
+    
+    // Отваряме втората магия
+    await secondSpell.locator('.spell-header').click();
+    // Чакаме да се обнови DOM-а
+    await page.waitForTimeout(500);
+    
+    // Първата трябва да се затвори (няма клас spell-expanded), втората да се отвори
+    await expect(firstSpell).not.toHaveClass(/spell-expanded/, { timeout: 2000 });
+    await expect(secondSpell).toHaveClass(/spell-expanded/, { timeout: 2000 });
+    await expect(secondSpell.locator('.spell-details')).toBeVisible({ timeout: 2000 });
+  });
+
+  test('трябва да показва "Зареждане на детайли..." ако детайлите не са заредени', async ({ page }) => {
+    const firstSpell = page.locator('.spell-item').first();
+    
+    // Отваряме магията
+    await firstSpell.locator('.spell-header').click();
+    await page.waitForTimeout(300);
+    
+    // Трябва да показва съобщение за зареждане или детайли
+    const details = firstSpell.locator('.spell-details');
+    await expect(details).toBeVisible();
+    
+    const content = await details.textContent();
+    expect(content).toBeTruthy();
+  });
+
+  test('трябва да зарежда детайли автоматично когато се отвори магия', async ({ page }) => {
+    const firstSpell = page.locator('.spell-item').first();
+    
+    // Отваряме магията
+    await firstSpell.locator('.spell-header').click();
+    await page.waitForTimeout(2000); // Чакаме за API заявката
+    
+    // Трябва да има детайли (или съобщение за зареждане)
+    const details = firstSpell.locator('.spell-details');
+    await expect(details).toBeVisible();
+  });
+
+  test('трябва да не отваря магия при кликване на Known/Prepared бутоните', async ({ page }) => {
+    const firstSpell = page.locator('.spell-item').first();
+    const knownButton = firstSpell.locator('.btn-known');
+    
+    // Кликваме на Known бутона
+    await knownButton.click();
+    await page.waitForTimeout(300);
+    
+    // Магията не трябва да се отвори
+    const details = firstSpell.locator('.spell-details');
+    await expect(details).toHaveCount(0);
+  });
+
+  test('трябва да показва детайли в акордеона, не в details секцията', async ({ page }) => {
+    const firstSpell = page.locator('.spell-item').first();
+    const detailsSection = page.locator('#details-root');
+    
+    // Отваряме магията
+    await firstSpell.locator('.spell-header').click();
+    await page.waitForTimeout(500);
+    
+    // Детайлите трябва да са в акордеона
+    await expect(firstSpell.locator('.spell-details')).toBeVisible();
+    
+    // Details секцията трябва да показва съобщение че детайлите са в списъка
+    const detailsText = await detailsSection.textContent();
+    expect(detailsText).toContain('Детайлите');
+  });
+
+  test('трябва да показва само магии от избраното ниво', async ({ page }) => {
+    // Зареждаме магии за ниво 1
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForTimeout(2000);
+    
+    const level1Spells = page.locator('.spell-item');
+    const level1Count = await level1Spells.count();
+    expect(level1Count).toBeGreaterThan(0);
+    
+    // Запазваме името на първата магия от ниво 1
+    const firstLevel1SpellName = await level1Spells.first().locator('.spell-name').textContent();
+    
+    // Променяме филтъра на ниво 2
+    await page.locator('#filter-level').selectOption('2');
+    await page.waitForTimeout(2000);
+    
+    // Проверяваме че магията от ниво 1 не се показва
+    const allSpells = page.locator('.spell-item');
+    const allSpellNames = await allSpells.locator('.spell-name').allTextContents();
+    expect(allSpellNames).not.toContain(firstLevel1SpellName);
+    
+    // Проверяваме че всички показани магии са от ниво 2 (не cantrips)
+    const spellCount = await allSpells.count();
+    expect(spellCount).toBeGreaterThan(0);
+    for (let i = 0; i < spellCount; i++) {
+      const spell = allSpells.nth(i);
+      const spellTags = await spell.locator('.spell-tags').textContent();
+      // Проверяваме че таговете съдържат "Level 2" (не cantrips)
+      expect(spellTags).toContain('Level 2');
+    }
+  });
+});
+

@@ -18,7 +18,8 @@ const defaultState = {
   },
   ui: {
     selectedSpellIndex: null,
-    filterLevel: 4,
+    filterLevel: 1,
+    expandedSpellIndex: null, // Индекс на отворената магия в акордеона
   },
 };
 
@@ -106,9 +107,12 @@ function upsertSpellRef(index, ref) {
       data: null,
       known: false,
       prepared: false,
+      loadedForLevel: state.ui.filterLevel, // Запазваме за кое ниво е заредена магията
     };
   } else {
     state.spells[index].ref = ref;
+    // Обновяваме loadedForLevel ако е нова заявка
+    state.spells[index].loadedForLevel = state.ui.filterLevel;
   }
   saveState();
 }
@@ -122,7 +126,12 @@ function upsertSpellData(index, data) {
       prepared: false,
     };
   } else {
+    // Запазваме ref ако вече съществува
     state.spells[index].data = data;
+    // Ако няма ref, създаваме го
+    if (!state.spells[index].ref) {
+      state.spells[index].ref = { index, name: data.name, url: `/api/spells/${index}` };
+    }
   }
   saveState();
 }
@@ -149,6 +158,16 @@ function selectSpell(index) {
 
 function setFilterLevel(level) {
   state.ui.filterLevel = level;
+  saveState();
+}
+
+function setExpandedSpell(index) {
+  // Ако кликнем на същата магия, затваряме я
+  if (state.ui.expandedSpellIndex === index) {
+    state.ui.expandedSpellIndex = null;
+  } else {
+    state.ui.expandedSpellIndex = index;
+  }
   saveState();
 }
 
