@@ -6,29 +6,38 @@ function renderSpells() {
   }));
 
   const level = state.ui.filterLevel;
+  
+  // Ако няма избрано ниво, показваме съобщение
+  if (level === null || level === undefined) {
+    root.innerHTML = '<div class="small">Изберете ниво за да заредите магии.</div>';
+    return;
+  }
+  
   const filtered = list.filter(s => {
     // Ако магията е отворена в акордеона, винаги я показваме
     if (state.ui.expandedSpellIndex === s.index) {
       return true;
     }
     
-    // Ако имаме данни, проверяваме нивото
-    if (s.data && typeof s.data.level === 'number') {
-      return s.data.level === level;
-    }
-    
-    // Ако нямаме данни, проверяваме дали е заредена за текущото ниво
-    // Това гарантира че магиите остават видими докато се зареждат детайлите
+    // Първо проверяваме дали е заредена за текущото ниво
+    // Това гарантира че магиите остават видими дори ако са upcast-нати
+    // (API-то връща магии които могат да се кастват на това ниво, не само магии на точното ниво)
     if (s.loadedForLevel !== undefined) {
       return s.loadedForLevel === level;
     }
     
-    // Ако няма нито данни, нито loadedForLevel, не показваме магията
+    // Ако няма loadedForLevel, но имаме данни, проверяваме реалното ниво
+    // Това е fallback за магии които са заредени но нямат loadedForLevel
+    if (s.data && typeof s.data.level === 'number') {
+      return s.data.level === level;
+    }
+    
+    // Ако няма нито loadedForLevel, нито данни, не показваме магията
     return false;
   });
 
   if (filtered.length === 0) {
-    root.innerHTML = '<div class="small">Изберете ниво за да заредите магии.</div>';
+    root.innerHTML = '<div class="small">Няма заредени магии за това ниво.</div>';
     return;
   }
 
@@ -44,7 +53,8 @@ function renderSpells() {
         .map(s => {
           const d = s.data;
           const name = d?.name || s.ref?.name || s.index;
-          const lvl = d?.level ?? level;
+          // Показваме нивото за което е заредена магията (може да е upcast)
+          const lvl = level;
           const schoolName = d?.school?.name || '';
 
           const tags = [`Level ${lvl}`];
@@ -95,9 +105,11 @@ function renderSpells() {
   }
 
   // Зареждаме детайли за отворената магия ако няма данни
+  // Извикваме само ако магията е отворена и няма данни, за да избегнем примигване
   const expandedIndex = state.ui.expandedSpellIndex;
   if (expandedIndex && state.spells[expandedIndex] && !state.spells[expandedIndex].data) {
-    ensureSpellDetails(expandedIndex);
+    // Извикваме асинхронно за да не блокираме рендеринга
+    ensureSpellDetails(expandedIndex).catch(console.error);
   }
 }
 
@@ -150,40 +162,32 @@ function handleSpellContainerClick(e) {
 }
 
 function handleToggleSpell(index) {
-  const wasExpanded = state.ui.expandedSpellIndex === index;
   setExpandedSpell(index);
+  // Рендерираме веднъж - ensureSpellDetails ще се извика от renderSpells ако е необходимо
   renderSpells();
-  // Зареждаме детайли ако няма и магията е отворена
-  if (state.ui.expandedSpellIndex === index && !wasExpanded) {
-    ensureSpellDetails(index);
-  }
 }
 
-async function loadSpellsForCurrentFilter(clearExisting = false) {
+async function loadSpellsForCurrentFilter() {
   const errorEl = document.getElementById('spells-error');
   errorEl.textContent = '';
   const { className } = state.caster;
   const level = state.ui.filterLevel;
 
-  // Ако трябва да изчистим съществуващите магии, изчистваме само тези от други нива
-  if (clearExisting) {
-    // Изчистваме магиите от други нива, но запазваме тези за текущото ниво
-    Object.keys(state.spells).forEach(index => {
-      const spell = state.spells[index];
-      if (spell.loadedForLevel !== undefined && spell.loadedForLevel !== level) {
-        delete state.spells[index];
-      } else if (spell.data && typeof spell.data.level === 'number' && spell.data.level !== level) {
-        delete state.spells[index];
-      }
-    });
-    saveState();
+  // Ако няма избрано ниво, не зареждаме магии
+  if (level === null || level === undefined) {
+    renderSpells();
+    return;
   }
+
+  // Изчистваме ВСИЧКИ магии преди да заредим нови
+  state.spells = {};
+  state.ui.expandedSpellIndex = null;
+  saveState();
 
   try {
     const refs = await fetchClassSpellsAtLevel(className, level);
-    // Затваряме отворената магия при зареждане на нови магии
-    state.ui.expandedSpellIndex = null;
     
+    // Зареждаме новите магии от API
     refs.forEach(r => {
       upsertSpellRef(r.index, r);
     });
@@ -200,23 +204,22 @@ async function ensureSpellDetails(index) {
   const entry = state.spells[index];
   if (!entry) return;
   
-  // Ако вече има данни, просто обновяваме рендера
+  // Ако вече има данни, не правим нищо - данните вече са показани
   if (entry.data) {
-    if (state.ui.expandedSpellIndex === index) {
-      renderSpells();
-    }
     return;
   }
 
   try {
     const d = await fetchSpellDetails(index);
     upsertSpellData(index, d);
-    // Винаги обновяваме рендера след зареждане на данни, за да се покажат детайлите
-    // Магията трябва да остане видима и отворена
-    renderSpells();
+    // Обновяваме рендера само ако магията все още е отворена
+    // Това предотвратява примигване ако потребителят е затворил магията докато се зареждат данните
+    if (state.ui.expandedSpellIndex === index) {
+      renderSpells();
+    }
   } catch (err) {
     console.error(err);
-    // Обновяваме рендера дори при грешка, за да покажем съобщение за грешка
+    // Обновяваме рендера дори при грешка, само ако магията е отворена
     if (state.ui.expandedSpellIndex === index) {
       renderSpells();
     }

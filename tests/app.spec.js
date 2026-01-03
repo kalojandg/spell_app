@@ -24,6 +24,64 @@ test.describe('Spell App - Базова функционалност', () => {
   test('трябва да показва секцията за Детайли', async ({ page }) => {
     await expect(page.locator('#details-section h2')).toContainText('Детайли');
   });
+
+  test('трябва да показва празен акордеон при зареждане на страницата', async ({ page }) => {
+    // Изчистваме localStorage за да няма стари магии
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+    
+    // Проверяваме че дропдаунът показва "Изберете"
+    const filterLevel = page.locator('#filter-level');
+    await expect(filterLevel).toHaveValue('');
+    
+    // Проверяваме че акордеонът е празен
+    const spellsRoot = page.locator('#spells-root');
+    const content = await spellsRoot.textContent();
+    expect(content).toContain('Изберете ниво за да заредите магии');
+    
+    // Проверяваме че няма магии в списъка
+    const spellItems = page.locator('.spell-item');
+    await expect(spellItems).toHaveCount(0);
+  });
+
+  test('трябва да изчиства акордеона когато се избере "Изберете" от дропдауна', async ({ page }) => {
+    // Изчистваме localStorage
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+    
+    // Първо зареждаме магии за ниво 1
+    await page.locator('#filter-level').selectOption('1');
+    // Чакаме да се появят магии в списъка
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Проверяваме че има магии
+    const spellItemsBefore = page.locator('.spell-item');
+    const countBefore = await spellItemsBefore.count();
+    expect(countBefore).toBeGreaterThan(0);
+    
+    // Избираме "Изберете" от дропдауна - използваме JavaScript за да зададем стойността
+    await page.evaluate(() => {
+      const select = document.getElementById('filter-level');
+      select.value = '';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForTimeout(500);
+    
+    // Проверяваме че дропдаунът показва "Изберете"
+    const filterLevel = page.locator('#filter-level');
+    await expect(filterLevel).toHaveValue('');
+    
+    // Проверяваме че акордеонът е празен
+    const spellsRoot = page.locator('#spells-root');
+    const content = await spellsRoot.textContent();
+    expect(content).toContain('Изберете ниво за да заредите магии');
+    
+    // Проверяваме че няма магии в списъка
+    const spellItemsAfter = page.locator('.spell-item');
+    await expect(spellItemsAfter).toHaveCount(0);
+  });
 });
 
 test.describe('Proficiency Bonus - Автоматично изчисляване', () => {

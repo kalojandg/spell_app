@@ -18,7 +18,7 @@ const defaultState = {
   },
   ui: {
     selectedSpellIndex: null,
-    filterLevel: 1,
+    filterLevel: null, // null означава "не е избрано ниво"
     expandedSpellIndex: null, // Индекс на отворената магия в акордеона
   },
 };
@@ -32,7 +32,12 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(defaultState);
     const parsed = JSON.parse(raw);
-    return mergeDeep(structuredClone(defaultState), parsed);
+    const merged = mergeDeep(structuredClone(defaultState), parsed);
+    // Винаги изчистваме магиите при зареждане на страницата
+    merged.spells = {};
+    merged.ui.expandedSpellIndex = null;
+    merged.ui.filterLevel = null;
+    return merged;
   } catch {
     return structuredClone(defaultState);
   }
@@ -111,7 +116,8 @@ function upsertSpellRef(index, ref) {
     };
   } else {
     state.spells[index].ref = ref;
-    // Обновяваме loadedForLevel ако е нова заявка
+    // Винаги обновяваме loadedForLevel когато зареждаме магии за ново ниво
+    // Това гарантира че магиите се показват правилно за текущото ниво
     state.spells[index].loadedForLevel = state.ui.filterLevel;
   }
   saveState();
@@ -124,6 +130,7 @@ function upsertSpellData(index, data) {
       data,
       known: false,
       prepared: false,
+      loadedForLevel: state.ui.filterLevel, // Запазваме за кое ниво е заредена магията
     };
   } else {
     // Запазваме ref ако вече съществува
@@ -131,6 +138,11 @@ function upsertSpellData(index, data) {
     // Ако няма ref, създаваме го
     if (!state.spells[index].ref) {
       state.spells[index].ref = { index, name: data.name, url: `/api/spells/${index}` };
+    }
+    // Винаги запазваме loadedForLevel - не го променяме ако вече е зададен
+    // Това гарантира че магиите остават видими дори след зареждане на детайлите
+    if (state.spells[index].loadedForLevel === undefined) {
+      state.spells[index].loadedForLevel = state.ui.filterLevel;
     }
   }
   saveState();
