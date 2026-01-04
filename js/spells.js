@@ -1,5 +1,7 @@
 function renderSpells() {
   const root = document.getElementById('spells-root');
+  if (!root) return; // Ако елементът не съществува, не правим нищо
+  
   const list = Object.entries(state.spells).map(([index, s]) => ({
     index,
     ...s,
@@ -13,26 +15,17 @@ function renderSpells() {
     return;
   }
   
+  // Филтрираме само по loadedForLevel - показваме магиите, които са заредени за текущото ниво
+  // Не филтрираме по реалното ниво на магията (s.data.level), защото магиите могат да бъдат upcast
   const filtered = list.filter(s => {
-    // Ако магията е отворена в акордеона, винаги я показваме
-    if (state.ui.expandedSpellIndex === s.index) {
-      return true;
+    // Показваме магията ако е заредена за текущото ниво
+    if (s.loadedForLevel !== undefined && s.loadedForLevel !== null) {
+      const loadedLevel = Number(s.loadedForLevel);
+      const filterLevel = Number(level);
+      return loadedLevel === filterLevel;
     }
     
-    // Първо проверяваме дали е заредена за текущото ниво
-    // Това гарантира че магиите остават видими дори ако са upcast-нати
-    // (API-то връща магии които могат да се кастват на това ниво, не само магии на точното ниво)
-    if (s.loadedForLevel !== undefined) {
-      return s.loadedForLevel === level;
-    }
-    
-    // Ако няма loadedForLevel, но имаме данни, проверяваме реалното ниво
-    // Това е fallback за магии които са заредени но нямат loadedForLevel
-    if (s.data && typeof s.data.level === 'number') {
-      return s.data.level === level;
-    }
-    
-    // Ако няма нито loadedForLevel, нито данни, не показваме магията
+    // Ако няма loadedForLevel, не показваме магията
     return false;
   });
 
@@ -187,16 +180,26 @@ async function loadSpellsForCurrentFilter() {
   try {
     const refs = await fetchClassSpellsAtLevel(className, level);
     
+    if (!refs || refs.length === 0) {
+      // Ако няма магии за това ниво, показваме съобщение
+      renderSpells();
+      return;
+    }
+    
     // Зареждаме новите магии от API
+    // Предаваме level директно за да се уверяваме че loadedForLevel се задава правилно
     refs.forEach(r => {
-      upsertSpellRef(r.index, r);
+      upsertSpellRef(r.index, r, level);
     });
+    // Запазваме state след като всички магии са добавени
+    saveState();
     
     // Рендерираме акордеона с новите магии
     renderSpells();
   } catch (err) {
     console.error(err);
     errorEl.textContent = 'Грешка при зареждане на магии.';
+    renderSpells();
   }
 }
 
@@ -212,17 +215,14 @@ async function ensureSpellDetails(index) {
   try {
     const d = await fetchSpellDetails(index);
     upsertSpellData(index, d);
-    // Обновяваме рендера само ако магията все още е отворена
-    // Това предотвратява примигване ако потребителят е затворил магията докато се зареждат данните
-    if (state.ui.expandedSpellIndex === index) {
-      renderSpells();
-    }
+    
+    // Винаги обновяваме рендера след зареждане на детайли
+    // Не премахваме магията - тя трябва да остане видима, защото е заредена за текущото ниво
+    renderSpells();
   } catch (err) {
     console.error(err);
-    // Обновяваме рендера дори при грешка, само ако магията е отворена
-    if (state.ui.expandedSpellIndex === index) {
-      renderSpells();
-    }
+    // Обновяваме рендера дори при грешка
+    renderSpells();
   }
 }
 

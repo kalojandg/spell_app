@@ -105,22 +105,25 @@ function recoverSlot(level) {
   }
 }
 
-function upsertSpellRef(index, ref) {
+function upsertSpellRef(index, ref, level) {
+  // Ако level не е подаден, използваме state.ui.filterLevel
+  const filterLevel = level !== undefined ? level : state.ui.filterLevel;
+  
   if (!state.spells[index]) {
     state.spells[index] = {
       ref,
       data: null,
       known: false,
       prepared: false,
-      loadedForLevel: state.ui.filterLevel, // Запазваме за кое ниво е заредена магията
+      loadedForLevel: filterLevel, // Запазваме за кое ниво е заредена магията
     };
   } else {
     state.spells[index].ref = ref;
     // Винаги обновяваме loadedForLevel когато зареждаме магии за ново ниво
     // Това гарантира че магиите се показват правилно за текущото ниво
-    state.spells[index].loadedForLevel = state.ui.filterLevel;
+    state.spells[index].loadedForLevel = filterLevel;
   }
-  saveState();
+  // Не извикваме saveState() тук - ще го извикаме след като всички магии са добавени
 }
 
 function upsertSpellData(index, data) {
