@@ -20,6 +20,7 @@ const defaultState = {
     selectedSpellIndex: null,
     filterLevel: null, // null означава "не е избрано ниво"
     expandedSpellIndex: null, // Индекс на отворената магия в акордеона
+    searchQuery: '', // Търсене по име на магия
   },
 };
 
@@ -37,6 +38,7 @@ function loadState() {
     merged.spells = {};
     merged.ui.expandedSpellIndex = null;
     merged.ui.filterLevel = null;
+    merged.ui.searchQuery = '';
     return merged;
   } catch {
     return structuredClone(defaultState);
@@ -184,5 +186,10 @@ function setExpandedSpell(index) {
     state.ui.expandedSpellIndex = index;
   }
   saveState();
+}
+
+function setSearchQuery(query) {
+  state.ui.searchQuery = query || '';
+  // Не запазваме в localStorage - търсенето е временно
 }
 

@@ -17,7 +17,7 @@ function renderSpells() {
   
   // Филтрираме само по loadedForLevel - показваме магиите, които са заредени за текущото ниво
   // Не филтрираме по реалното ниво на магията (s.data.level), защото магиите могат да бъдат upcast
-  const filtered = list.filter(s => {
+  let filtered = list.filter(s => {
     // Показваме магията ако е заредена за текущото ниво
     if (s.loadedForLevel !== undefined && s.loadedForLevel !== null) {
       const loadedLevel = Number(s.loadedForLevel);
@@ -29,8 +29,20 @@ function renderSpells() {
     return false;
   });
 
+  // Филтриране по търсене (само в заредените магии)
+  const searchQuery = (state.ui.searchQuery || '').trim().toLowerCase();
+  if (searchQuery) {
+    filtered = filtered.filter(s => {
+      const name = (s.data?.name || s.ref?.name || s.index).toLowerCase();
+      return name.includes(searchQuery);
+    });
+  }
+
   if (filtered.length === 0) {
-    root.innerHTML = '<div class="small">Няма заредени магии за това ниво.</div>';
+    const message = searchQuery 
+      ? 'Няма намерени магии за това търсене.'
+      : 'Няма заредени магии за това ниво.';
+    root.innerHTML = `<div class="small">${message}</div>`;
     return;
   }
 

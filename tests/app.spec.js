@@ -1,7 +1,118 @@
 import { test, expect } from '@playwright/test';
 
+// Mock данни за API
+const mockSpellsLevel1 = {
+  count: 3,
+  results: [
+    { index: 'cure-wounds', name: 'Cure Wounds', url: '/api/spells/cure-wounds' },
+    { index: 'healing-word', name: 'Healing Word', url: '/api/spells/healing-word' },
+    { index: 'entangle', name: 'Entangle', url: '/api/spells/entangle' },
+  ]
+};
+
+const mockSpellsLevel2 = {
+  count: 2,
+  results: [
+    { index: 'lesser-restoration', name: 'Lesser Restoration', url: '/api/spells/lesser-restoration' },
+    { index: 'moonbeam', name: 'Moonbeam', url: '/api/spells/moonbeam' },
+  ]
+};
+
+const mockSpellsLevel3 = {
+  count: 2,
+  results: [
+    { index: 'call-lightning', name: 'Call Lightning', url: '/api/spells/call-lightning' },
+    { index: 'dispel-magic', name: 'Dispel Magic', url: '/api/spells/dispel-magic' },
+  ]
+};
+
+const mockSpellDetails = {
+  'cure-wounds': {
+    index: 'cure-wounds', name: 'Cure Wounds', level: 1,
+    school: { name: 'Evocation' }, casting_time: '1 action', range: 'Touch',
+    duration: 'Instantaneous', components: ['V', 'S'],
+    desc: ['A creature you touch regains hit points.'],
+    higher_level: ['When cast at higher level, heals more.']
+  },
+  'healing-word': {
+    index: 'healing-word', name: 'Healing Word', level: 1,
+    school: { name: 'Evocation' }, casting_time: '1 bonus action', range: '60 feet',
+    duration: 'Instantaneous', components: ['V'],
+    desc: ['A creature of your choice regains hit points.']
+  },
+  'entangle': {
+    index: 'entangle', name: 'Entangle', level: 1,
+    school: { name: 'Conjuration' }, casting_time: '1 action', range: '90 feet',
+    duration: 'Concentration, up to 1 minute', components: ['V', 'S'],
+    concentration: true,
+    desc: ['Grasping weeds and vines sprout from the ground.']
+  },
+  'lesser-restoration': {
+    index: 'lesser-restoration', name: 'Lesser Restoration', level: 2,
+    school: { name: 'Abjuration' }, casting_time: '1 action', range: 'Touch',
+    duration: 'Instantaneous', components: ['V', 'S'],
+    desc: ['You touch a creature and can end one condition.']
+  },
+  'moonbeam': {
+    index: 'moonbeam', name: 'Moonbeam', level: 2,
+    school: { name: 'Evocation' }, casting_time: '1 action', range: '120 feet',
+    duration: 'Concentration, up to 1 minute', components: ['V', 'S', 'M'],
+    concentration: true,
+    desc: ['A silvery beam of pale light shines down.']
+  },
+  'call-lightning': {
+    index: 'call-lightning', name: 'Call Lightning', level: 3,
+    school: { name: 'Conjuration' }, casting_time: '1 action', range: '120 feet',
+    duration: 'Concentration, up to 10 minutes', components: ['V', 'S'],
+    concentration: true,
+    desc: ['A storm cloud appears.']
+  },
+  'dispel-magic': {
+    index: 'dispel-magic', name: 'Dispel Magic', level: 3,
+    school: { name: 'Abjuration' }, casting_time: '1 action', range: '120 feet',
+    duration: 'Instantaneous', components: ['V', 'S'],
+    desc: ['Choose one creature, object, or magical effect.']
+  }
+};
+
+const mockClassLevel = (level) => ({
+  prof_bonus: Math.ceil(level / 4) + 1,
+  spellcasting: {
+    spell_slots_level_1: level >= 1 ? 4 : 0,
+    spell_slots_level_2: level >= 3 ? 3 : 0,
+    spell_slots_level_3: level >= 5 ? 2 : 0,
+    spell_slots_level_4: level >= 7 ? 1 : 0,
+  }
+});
+
+// Helper функция за setup на API mocks
+async function setupApiMocks(page) {
+  await page.route('**/api/classes/*/levels/*/spells', async (route) => {
+    const url = route.request().url();
+    let response = mockSpellsLevel1;
+    if (url.includes('/levels/2/')) response = mockSpellsLevel2;
+    else if (url.includes('/levels/3/')) response = mockSpellsLevel3;
+    await route.fulfill({ json: response });
+  });
+
+  await page.route('**/api/spells/*', async (route) => {
+    const url = route.request().url();
+    const spellIndex = url.split('/').pop();
+    const details = mockSpellDetails[spellIndex] || mockSpellDetails['cure-wounds'];
+    await route.fulfill({ json: details });
+  });
+
+  await page.route('**/api/classes/*/levels/*', async (route) => {
+    const url = route.request().url();
+    const levelMatch = url.match(/\/levels\/(\d+)$/);
+    const level = levelMatch ? parseInt(levelMatch[1]) : 4;
+    await route.fulfill({ json: mockClassLevel(level) });
+  });
+}
+
 test.describe('Spell App - Базова функционалност', () => {
   test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
     await page.goto('/');
   });
 
@@ -86,6 +197,7 @@ test.describe('Spell App - Базова функционалност', () => {
 
 test.describe('Proficiency Bonus - Автоматично изчисляване', () => {
   test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
     await page.goto('/');
     // Изчистваме localStorage за чист тест
     await page.evaluate(() => localStorage.clear());
@@ -200,6 +312,7 @@ test.describe('Proficiency Bonus - Автоматично изчисляване
 
 test.describe('Spell Slots - Автоматично изчисляване', () => {
   test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
@@ -319,14 +432,15 @@ test.describe('Spell Slots - Автоматично изчисляване', () 
 
 test.describe('Spells - Акордеон функционалност', () => {
   test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(300);
     // Зареждаме магии за тестване - избираме ниво и чакаме да се заредят
     await page.locator('#filter-level').selectOption('1');
     // Чакаме магиите да се появят
-    await page.waitForSelector('.spell-item', { timeout: 15000 });
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
   });
 
   test('трябва да показва списък с магии', async ({ page }) => {
@@ -353,32 +467,19 @@ test.describe('Spells - Акордеон функционалност', () => {
   });
 
   test('трябва да може да затвори магия като кликнеш отново на хедъра', async ({ page }) => {
-    const spellItems = page.locator('.spell-item');
-    await expect(spellItems.first()).toBeVisible({ timeout: 5000 });
-    
-    // Взимаме индекса на първата магия
-    const firstSpellIndex = await spellItems.first().getAttribute('data-index');
-    const spellHeader = spellItems.first().locator('.spell-header');
-    
     // Отваряме магията
-    await spellHeader.click();
-    await page.waitForTimeout(1500);
+    await page.locator('.spell-item').first().locator('.spell-header').click();
+    // Чакаме детайлите да се появят
+    await page.waitForSelector('.spell-details', { timeout: 5000 });
     
-    // Проверяваме че детайлите са видими
-    let firstSpell = page.locator(`.spell-item[data-index="${firstSpellIndex}"]`);
-    await expect(firstSpell.locator('.spell-details')).toBeVisible({ timeout: 5000 });
-    
-    // Затваряме магията
-    await firstSpell.locator('.spell-header').click();
-    await page.waitForTimeout(1000);
-    
-    // Магията трябва да остане видима в списъка след затваряне
-    firstSpell = page.locator(`.spell-item[data-index="${firstSpellIndex}"]`);
-    await expect(firstSpell).toBeVisible({ timeout: 5000 });
+    // Затваряме магията (кликваме пак на хедъра)
+    await page.locator('.spell-item.spell-expanded .spell-header').click();
+    await page.waitForTimeout(500);
     
     // Детайлите трябва да изчезнат
-    await expect(firstSpell.locator('.spell-details')).toHaveCount(0);
-    await expect(firstSpell).not.toHaveClass(/spell-expanded/);
+    await expect(page.locator('.spell-details')).toHaveCount(0);
+    // Магиите трябва да са все още видими
+    await expect(page.locator('.spell-item').first()).toBeVisible();
   });
 
   test('трябва да може да отвори само една магия наведнъж', async ({ page }) => {
@@ -422,20 +523,16 @@ test.describe('Spells - Акордеон функционалност', () => {
   });
 
   test('трябва да зарежда детайли автоматично когато се отвори магия', async ({ page }) => {
-    const spellItems = page.locator('.spell-item');
-    await expect(spellItems.first()).toBeVisible({ timeout: 5000 });
-    
-    // Взимаме индекса на първата магия
-    const firstSpellIndex = await spellItems.first().getAttribute('data-index');
-    
     // Отваряме магията
-    await spellItems.first().locator('.spell-header').click();
-    await page.waitForTimeout(2000); // Чакаме за API заявката
+    await page.locator('.spell-item').first().locator('.spell-header').click();
+    // Чакаме детайлите да се появят
+    await page.waitForSelector('.spell-details', { timeout: 5000 });
     
-    // Трябва да има детайли (или съобщение за зареждане)
-    const firstSpell = page.locator(`.spell-item[data-index="${firstSpellIndex}"]`);
-    const details = firstSpell.locator('.spell-details');
-    await expect(details).toBeVisible({ timeout: 5000 });
+    // Трябва да има детайли
+    const details = page.locator('.spell-details');
+    await expect(details).toBeVisible();
+    const content = await details.textContent();
+    expect(content).toBeTruthy();
   });
 
   test('трябва да не отваря магия при кликване на Known/Prepared бутоните', async ({ page }) => {
@@ -453,18 +550,16 @@ test.describe('Spells - Акордеон функционалност', () => {
   });
 
   test('трябва да показва детайли в акордеона, не в details секцията', async ({ page }) => {
-    const firstSpell = page.locator('.spell-item').first();
-    await expect(firstSpell).toBeVisible({ timeout: 5000 });
-    const detailsSection = page.locator('#details-root');
-    
     // Отваряме магията
-    await firstSpell.locator('.spell-header').click();
-    await page.waitForTimeout(1000);
+    await page.locator('.spell-item').first().locator('.spell-header').click();
+    // Чакаме детайлите да се появят
+    await page.waitForSelector('.spell-details', { timeout: 5000 });
     
     // Детайлите трябва да са в акордеона
-    await expect(firstSpell.locator('.spell-details')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.spell-item .spell-details')).toBeVisible();
     
     // Details секцията трябва да показва съобщение че детайлите са в списъка
+    const detailsSection = page.locator('#details-root');
     const detailsText = await detailsSection.textContent();
     expect(detailsText).toContain('Детайлите');
   });
@@ -555,6 +650,118 @@ test.describe('Spells - Акордеон функционалност', () => {
     const allSpellsAfter = page.locator('.spell-item');
     const allSpellNames = await allSpellsAfter.locator('.spell-name').allTextContents();
     expect(allSpellNames).toContain(spellName);
+  });
+});
+
+test.describe('Spells - Търсене по име', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(300);
+    // Зареждаме магии за ниво 1
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+  });
+
+  test('трябва да има input поле за търсене под dropdown-а', async ({ page }) => {
+    const searchInput = page.locator('#spell-search');
+    await expect(searchInput).toBeVisible();
+    // Проверяваме че има placeholder
+    await expect(searchInput).toHaveAttribute('placeholder', 'Търсене по име...');
+  });
+
+  test('трябва да филтрира магиите по име при въвеждане на текст', async ({ page }) => {
+    const spellsBefore = page.locator('.spell-item');
+    const countBefore = await spellsBefore.count();
+    expect(countBefore).toBeGreaterThan(1);
+    
+    // Взимаме името на първата магия
+    const firstSpellName = await spellsBefore.first().locator('.spell-name').textContent();
+    
+    // Търсим по първите 3 букви от името
+    const searchTerm = firstSpellName.substring(0, 3);
+    await page.locator('#spell-search').fill(searchTerm);
+    await page.waitForTimeout(300);
+    
+    // Проверяваме че резултатите съдържат търсения текст
+    const spellsAfter = page.locator('.spell-item');
+    const spellNames = await spellsAfter.locator('.spell-name').allTextContents();
+    for (const name of spellNames) {
+      expect(name.toLowerCase()).toContain(searchTerm.toLowerCase());
+    }
+  });
+
+  test('трябва да показва всички магии при изчистване на търсенето', async ({ page }) => {
+    const spellsBefore = page.locator('.spell-item');
+    const countBefore = await spellsBefore.count();
+    
+    // Търсим нещо
+    await page.locator('#spell-search').fill('cure');
+    await page.waitForTimeout(300);
+    
+    // Изчистваме търсенето
+    await page.locator('#spell-search').fill('');
+    await page.waitForTimeout(300);
+    
+    // Проверяваме че всички магии са показани отново
+    const spellsAfter = page.locator('.spell-item');
+    const countAfter = await spellsAfter.count();
+    expect(countAfter).toBe(countBefore);
+  });
+
+  test('търсенето трябва да е case-insensitive', async ({ page }) => {
+    // Търсим с малки букви
+    await page.locator('#spell-search').fill('cure');
+    await page.waitForTimeout(300);
+    const countLower = await page.locator('.spell-item').count();
+    
+    // Търсим с големи букви
+    await page.locator('#spell-search').fill('CURE');
+    await page.waitForTimeout(300);
+    const countUpper = await page.locator('.spell-item').count();
+    
+    // Резултатите трябва да са еднакви
+    expect(countLower).toBe(countUpper);
+  });
+
+  test('трябва да показва съобщение ако няма резултати от търсенето', async ({ page }) => {
+    // Проверяваме че има магии преди търсене
+    const spellsBefore = page.locator('.spell-item');
+    await expect(spellsBefore.first()).toBeVisible({ timeout: 5000 });
+    
+    // Търсим нещо което не съществува
+    await page.locator('#spell-search').fill('xyznonexistent123');
+    await page.waitForTimeout(300);
+    
+    // Трябва да няма магии
+    const spells = page.locator('.spell-item');
+    await expect(spells).toHaveCount(0);
+    
+    // Трябва да има съобщение
+    const spellsRoot = page.locator('#spells-root');
+    const content = await spellsRoot.textContent();
+    expect(content).toContain('Няма намерени магии');
+  });
+
+  test('търсенето трябва да се изчиства при смяна на нивото', async ({ page }) => {
+    // Проверяваме че има магии
+    const spellsBefore = page.locator('.spell-item');
+    await expect(spellsBefore.first()).toBeVisible({ timeout: 5000 });
+    
+    // Въвеждаме търсене
+    await page.locator('#spell-search').fill('cure');
+    await page.waitForTimeout(300);
+    
+    // Сменяме нивото
+    await page.locator('#filter-level').selectOption('2');
+    // Чакаме или за магии или за съобщение
+    await page.waitForTimeout(3000);
+    
+    // Търсенето трябва да е изчистено
+    const searchValue = await page.locator('#spell-search').inputValue();
+    expect(searchValue).toBe('');
   });
 });
 
