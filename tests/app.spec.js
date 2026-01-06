@@ -87,6 +87,21 @@ const mockClassLevel = (level) => ({
 
 // Helper функция за setup на API mocks
 async function setupApiMocks(page) {
+  // Маркираме че сме в тест среда (за да не се регистрира service worker)
+  await page.addInitScript(() => {
+    window.__PLAYWRIGHT_TEST__ = true;
+  });
+  
+  // Unregister всички service workers
+  await page.addInitScript(async () => {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
+    }
+  });
+
   await page.route('**/api/classes/*/levels/*/spells', async (route) => {
     const url = route.request().url();
     let response = mockSpellsLevel1;
@@ -1369,6 +1384,253 @@ test.describe('Смяна на клас - Confirmation Dialog', () => {
     // Акордеонът трябва да показва съобщение за избор на ниво
     const message = page.locator('#spells-root .small');
     await expect(message).toContainText('Изберете ниво');
+  });
+});
+
+test.describe('Export/Import - Бутони и функционалност', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('трябва да има Export бутон в header', async ({ page }) => {
+    const exportBtn = page.locator('#btn-export');
+    await expect(exportBtn).toBeVisible();
+  });
+
+  test('трябва да има Import бутон в header', async ({ page }) => {
+    const importBtn = page.locator('#btn-import');
+    await expect(importBtn).toBeVisible();
+  });
+
+  test('трябва да има Install бутон в header', async ({ page }) => {
+    const installBtn = page.locator('#btn-install');
+    await expect(installBtn).toBeVisible();
+  });
+
+  test('Export трябва да свали JSON файл с магиите', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 10000 });
+    
+    // Маркираме магия като known
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Подготвяме да хванем download
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#btn-export').click()
+    ]);
+    
+    // Проверяваме името на файла
+    expect(download.suggestedFilename()).toMatch(/spellbook.*\.json/);
+  });
+
+  test('Export/Import round-trip трябва да запази state', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 10000 });
+    
+    // Маркираме магии като known и prepared
+    const firstSpell = page.locator('.spell-item').first();
+    const spellIndex = await firstSpell.getAttribute('data-index');
+    await firstSpell.locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    await page.locator('.known-spell-item').first().locator('.btn-prepared').click();
+    await page.waitForTimeout(200);
+    
+    // Export
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#btn-export').click()
+    ]);
+    
+    // Четем съдържанието на файла чрез stream
+    const stream = await download.createReadStream();
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    const exportedData = JSON.parse(Buffer.concat(chunks).toString());
+    
+    // Изчистваме state чрез evaluate (без reload за да запазим mocks)
+    await page.evaluate(() => {
+      localStorage.clear();
+      state.spells = {};
+      state.ui.filterLevel = null;
+      state.ui.expandedSpellIndex = null;
+    });
+    
+    // Re-render
+    await page.evaluate(() => {
+      renderSpells();
+      renderKnownSpells();
+    });
+    await page.waitForTimeout(300);
+    
+    // Проверяваме че няма known магии
+    await expect(page.locator('.known-spell-item')).toHaveCount(0);
+    
+    // Import - създаваме файл и го качваме
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await page.locator('#btn-import').click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
+      name: 'spellbook.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(exportedData))
+    });
+    await page.waitForTimeout(500);
+    
+    // Проверяваме че магията е възстановена в Known секцията
+    const knownSpell = page.locator(`.known-spell-item[data-index="${spellIndex}"]`);
+    await expect(knownSpell).toBeVisible();
+    
+    // Проверяваме че е prepared
+    await expect(knownSpell.locator('.btn-prepared')).toHaveClass(/prepared/);
+  });
+
+  test('Import трябва да показва грешка при невалиден JSON', async ({ page }) => {
+    let dialogMessage = '';
+    page.on('dialog', async dialog => {
+      dialogMessage = dialog.message();
+      await dialog.accept();
+    });
+    
+    // Import невалиден файл
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await page.locator('#btn-import').click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
+      name: 'invalid.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from('not valid json')
+    });
+    await page.waitForTimeout(500);
+    
+    // Трябва да има грешка
+    expect(dialogMessage.toLowerCase()).toContain('грешка');
+  });
+
+  test('Export трябва да включва caster настройките', async ({ page }) => {
+    // Променяме caster настройките
+    await page.locator('#caster-class').selectOption('wizard');
+    await page.locator('#caster-level').fill('10');
+    await page.locator('#caster-level').blur();
+    await page.locator('#caster-ability-mod').fill('4');
+    await page.locator('#caster-ability-mod').blur();
+    await page.waitForTimeout(500);
+    
+    // Export
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('#btn-export').click()
+    ]);
+    
+    // Четем съдържанието на файла чрез stream
+    const stream = await download.createReadStream();
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    const exportedData = JSON.parse(Buffer.concat(chunks).toString());
+    
+    // Проверяваме caster данните
+    expect(exportedData.caster.className).toBe('wizard');
+    expect(exportedData.caster.level).toBe(10);
+    expect(exportedData.caster.abilityMod).toBe(4);
+  });
+});
+
+test.describe('Rest - Възстановяване на слотове', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('трябва да има Rest бутон в header', async ({ page }) => {
+    const restBtn = page.locator('#btn-rest');
+    await expect(restBtn).toBeVisible();
+  });
+
+  test('Rest трябва да възстанови всички слотове до максимума', async ({ page }) => {
+    // Използваме слот от ниво 1
+    const slot1 = page.locator('.slot-row').first();
+    await slot1.locator('button').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме че слотът е използван (3/4)
+    await expect(slot1.locator('.count')).toContainText('3');
+    
+    // Хващаме диалога
+    let dialogMessage = '';
+    page.on('dialog', async dialog => {
+      dialogMessage = dialog.message();
+      await dialog.accept();
+    });
+    
+    // Натискаме Rest
+    await page.locator('#btn-rest').click();
+    await page.waitForTimeout(300);
+    
+    // Слотовете трябва да са възстановени (4/4)
+    await expect(slot1.locator('.remaining')).toContainText('4');
+    
+    // Трябва да има диалог
+    expect(dialogMessage.toLowerCase()).toContain('prepare');
+  });
+
+  test('Rest трябва да възстанови всички нива на слотове', async ({ page }) => {
+    // Използваме слотове от различни нива
+    const slots = page.locator('.slot-row');
+    
+    // Level 1 - използваме 2 слота
+    await slots.nth(0).locator('button').click();
+    await page.waitForTimeout(100);
+    await slots.nth(0).locator('button').click();
+    await page.waitForTimeout(100);
+    
+    // Level 2 - използваме 1 слот
+    await slots.nth(1).locator('button').click();
+    await page.waitForTimeout(100);
+    
+    // Проверяваме че са използвани
+    await expect(slots.nth(0).locator('.remaining')).toContainText('2');
+    await expect(slots.nth(1).locator('.remaining')).toContainText('2');
+    
+    // Хващаме диалога
+    page.on('dialog', async dialog => {
+      await dialog.accept();
+    });
+    
+    // Rest
+    await page.locator('#btn-rest').click();
+    await page.waitForTimeout(300);
+    
+    // Всички слотове трябва да са възстановени
+    await expect(slots.nth(0).locator('.remaining')).toContainText('4');
+    await expect(slots.nth(1).locator('.remaining')).toContainText('3');
+  });
+
+  test('Rest диалогът трябва да съдържа "prepare your spells"', async ({ page }) => {
+    let dialogMessage = '';
+    page.on('dialog', async dialog => {
+      dialogMessage = dialog.message();
+      await dialog.accept();
+    });
+    
+    await page.locator('#btn-rest').click();
+    await page.waitForTimeout(300);
+    
+    expect(dialogMessage.toLowerCase()).toContain('prepare');
+    expect(dialogMessage.toLowerCase()).toContain('spells');
   });
 });
 
