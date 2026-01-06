@@ -765,3 +765,610 @@ test.describe('Spells - Търсене по име', () => {
   });
 });
 
+test.describe('Prepared Spells - Функционалност', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('трябва да показва брояч за подготвени магии в Caster секцията', async ({ page }) => {
+    const preparedCounter = page.locator('#prepared-counter');
+    await expect(preparedCounter).toBeVisible();
+    // Трябва да показва формат X/Y
+    const text = await preparedCounter.textContent();
+    expect(text).toMatch(/\d+\s*\/\s*\d+/);
+  });
+
+  test('трябва да изчисли правилно max prepared за Druid (level + ability mod)', async ({ page }) => {
+    // Default е Druid level 4, ability mod 3 => 4 + 3 = 7
+    await page.waitForTimeout(500);
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    // Очакваме 0 / 7 (нищо подготвено, max 7)
+    expect(text).toContain('/ 7');
+  });
+
+  test('трябва да изчисли правилно max prepared за Cleric', async ({ page }) => {
+    // Cleric level 4, ability mod 3 => 4 + 3 = 7
+    await page.locator('#caster-class').selectOption('cleric');
+    await page.waitForTimeout(500);
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    expect(text).toContain('/ 7');
+  });
+
+  test('трябва да изчисли правилно max prepared за Paladin (level/2 + ability mod)', async ({ page }) => {
+    // Paladin level 4, ability mod 3 => floor(4/2) + 3 = 2 + 3 = 5
+    await page.locator('#caster-class').selectOption('paladin');
+    await page.waitForTimeout(500);
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    expect(text).toContain('/ 5');
+  });
+
+  test('трябва да изчисли правилно max prepared за Wizard', async ({ page }) => {
+    // Wizard level 4, ability mod 3 => 4 + 3 = 7
+    await page.locator('#caster-class').selectOption('wizard');
+    await page.waitForTimeout(500);
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    expect(text).toContain('/ 7');
+  });
+
+  test('трябва да обнови max prepared когато се промени нивото', async ({ page }) => {
+    // Druid level 8, ability mod 3 => 8 + 3 = 11
+    await page.locator('#caster-level').fill('8');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(500);
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    expect(text).toContain('/ 11');
+  });
+
+  test('трябва да обнови max prepared когато се промени ability mod', async ({ page }) => {
+    // Druid level 4, ability mod 5 => 4 + 5 = 9
+    await page.locator('#caster-ability-mod').fill('5');
+    await page.locator('#caster-ability-mod').blur();
+    await page.waitForTimeout(500);
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    expect(text).toContain('/ 9');
+  });
+
+  test('трябва да увеличи prepared count когато се подготви магия', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    const firstSpell = page.locator('.spell-item').first();
+    await firstSpell.locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Подготвяме магията от Known Spells секцията
+    const knownSpell = page.locator('.known-spell-item').first();
+    await knownSpell.locator('.btn-prepared').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме че брояча се е увеличил
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    expect(text).toMatch(/^1\s*\//);
+  });
+
+  test('трябва да не позволява подготвяне над максимума', async ({ page }) => {
+    // Намаляме max prepared до 1 (level 1, ability mod 0 => 1)
+    await page.locator('#caster-level').fill('1');
+    await page.locator('#caster-level').blur();
+    await page.locator('#caster-ability-mod').fill('0');
+    await page.locator('#caster-ability-mod').blur();
+    await page.waitForTimeout(500);
+    
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме две магии като known
+    const spells = page.locator('.spell-item');
+    await spells.nth(0).locator('.btn-known').click();
+    await page.waitForTimeout(100);
+    await spells.nth(1).locator('.btn-known').click();
+    await page.waitForTimeout(100);
+    
+    // Подготвяме първата магия от Known Spells секцията
+    const knownSpells = page.locator('.known-spell-item');
+    await knownSpells.nth(0).locator('.btn-prepared').click();
+    await page.waitForTimeout(100);
+    
+    // Опитваме да подготвим втора магия
+    await knownSpells.nth(1).locator('.btn-prepared').click();
+    await page.waitForTimeout(100);
+    
+    // Втората магия не трябва да е подготвена (максимум е 1)
+    const secondSpellPrepared = await knownSpells.nth(1).locator('.btn-prepared').evaluate(
+      el => el.classList.contains('prepared')
+    );
+    expect(secondSpellPrepared).toBe(false);
+    
+    // Брояча трябва да показва 1/1
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    expect(text).toMatch(/1\s*\/\s*1/);
+  });
+
+  test('трябва да намали prepared count когато се премахне подготовка', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    const firstSpell = page.locator('.spell-item').first();
+    await firstSpell.locator('.btn-known').click();
+    await page.waitForTimeout(100);
+    
+    // Подготвяме магията от Known Spells секцията
+    const knownSpell = page.locator('.known-spell-item').first();
+    await knownSpell.locator('.btn-prepared').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме че е 1/X
+    let text = await page.locator('#prepared-counter').textContent();
+    expect(text).toMatch(/^1\s*\//);
+    
+    // Премахваме подготовката
+    await knownSpell.locator('.btn-prepared').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме че е 0/X
+    text = await page.locator('#prepared-counter').textContent();
+    expect(text).toMatch(/^0\s*\//);
+  });
+
+  test('трябва minimum prepared да е 1 дори при отрицателен modifier', async ({ page }) => {
+    // Level 1, ability mod -2 => max(1, 1 + (-2)) = max(1, -1) = 1
+    await page.locator('#caster-level').fill('1');
+    await page.locator('#caster-level').blur();
+    await page.locator('#caster-ability-mod').fill('-2');
+    await page.locator('#caster-ability-mod').blur();
+    await page.waitForTimeout(500);
+    
+    const preparedCounter = page.locator('#prepared-counter');
+    const text = await preparedCounter.textContent();
+    // Minimum трябва да е 1
+    expect(text).toContain('/ 1');
+  });
+
+  test('трябва prepared count да се запазва при смяна на ниво на магии', async ({ page }) => {
+    // Зареждаме магии от ниво 1
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    const firstSpell = page.locator('.spell-item').first();
+    await firstSpell.locator('.btn-known').click();
+    await page.waitForTimeout(100);
+    
+    // Подготвяме магията от Known Spells секцията
+    const knownSpell = page.locator('.known-spell-item').first();
+    await knownSpell.locator('.btn-prepared').click();
+    await page.waitForTimeout(200);
+    
+    // Сменяме на ниво 2
+    await page.locator('#filter-level').selectOption('2');
+    await page.waitForTimeout(500);
+    
+    // Брояча трябва да показва все още 1 prepared
+    const text = await page.locator('#prepared-counter').textContent();
+    expect(text).toMatch(/^1\s*\//);
+  });
+});
+
+test.describe('Known Spells - Секция', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('трябва да има Known Spells секция', async ({ page }) => {
+    const section = page.locator('#known-spells-section');
+    await expect(section).toBeVisible();
+  });
+
+  test('трябва да показва съобщение ако няма known магии', async ({ page }) => {
+    const message = page.locator('#known-spells-root .small');
+    await expect(message).toContainText('Няма научени магии');
+  });
+
+  test('трябва да показва магия в Known секцията след маркиране като known', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    const firstSpell = page.locator('.spell-item').first();
+    const spellName = await firstSpell.locator('.spell-name').textContent();
+    await firstSpell.locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме че магията се появява в Known секцията
+    const knownSpell = page.locator('.known-spell-item').first();
+    await expect(knownSpell).toBeVisible();
+    await expect(knownSpell.locator('.known-spell-name')).toContainText(spellName);
+  });
+
+  test('трябва да има Prep бутон в Known секцията', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме за Prep бутон
+    const prepButton = page.locator('.known-spell-item .btn-prepared');
+    await expect(prepButton).toBeVisible();
+  });
+
+  test('трябва да НЕ показва Prep бутон в основната таблица', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Проверяваме че няма Prep бутон в основната таблица
+    const prepButton = page.locator('.spell-item .btn-prepared');
+    await expect(prepButton).toHaveCount(0);
+  });
+
+  test('трябва да премахва магия от Known секцията при отмаркиране', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме че има магия в Known секцията
+    await expect(page.locator('.known-spell-item')).toHaveCount(1);
+    
+    // Отмаркираме магията
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме че секцията е празна
+    await expect(page.locator('.known-spell-item')).toHaveCount(0);
+  });
+});
+
+test.describe('Persist - Запазване на known/prepared', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('трябва да запази known статус след refresh', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    const spellItem = page.locator('.spell-item').first();
+    const spellIndex = await spellItem.getAttribute('data-index');
+    await spellItem.locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Refresh страницата
+    await page.reload();
+    await page.waitForTimeout(500);
+    
+    // Магията трябва да е все още в Known секцията
+    const knownSpell = page.locator(`.known-spell-item[data-index="${spellIndex}"]`);
+    await expect(knownSpell).toBeVisible();
+  });
+
+  test('трябва да запази prepared статус след refresh', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known и prepared
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    await page.locator('.known-spell-item').first().locator('.btn-prepared').click();
+    await page.waitForTimeout(200);
+    
+    // Refresh страницата
+    await page.reload();
+    await page.waitForTimeout(500);
+    
+    // Prepared counter трябва да показва 1
+    const text = await page.locator('#prepared-counter').textContent();
+    expect(text).toMatch(/^1\s*\//);
+    
+    // Бутонът трябва да има prepared клас
+    const prepButton = page.locator('.known-spell-item .btn-prepared');
+    await expect(prepButton).toHaveClass(/prepared/);
+  });
+
+  test('трябва да запази known статус след смяна на филтър', async ({ page }) => {
+    // Зареждаме магии от ниво 1
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    const spellItem = page.locator('.spell-item').first();
+    const spellIndex = await spellItem.getAttribute('data-index');
+    await spellItem.locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Сменяме на ниво 2
+    await page.locator('#filter-level').selectOption('2');
+    await page.waitForTimeout(500);
+    
+    // Магията трябва да е все още в Known секцията
+    const knownSpell = page.locator(`.known-spell-item[data-index="${spellIndex}"]`);
+    await expect(knownSpell).toBeVisible();
+  });
+});
+
+test.describe('Known Spells Limit - За known casters', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('трябва да показва Known Spells counter за Sorcerer', async ({ page }) => {
+    await page.locator('#caster-class').selectOption('sorcerer');
+    await page.waitForTimeout(500);
+    
+    const knownCounter = page.locator('#known-counter');
+    await expect(knownCounter).toBeVisible();
+  });
+
+  test('трябва да показва правилен max known за Sorcerer level 4', async ({ page }) => {
+    // Sorcerer level 4 има 5 known spells
+    await page.locator('#caster-class').selectOption('sorcerer');
+    await page.locator('#caster-level').fill('4');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(500);
+    
+    const knownCounter = page.locator('#known-counter');
+    const text = await knownCounter.textContent();
+    expect(text).toContain('/ 5');
+  });
+
+  test('трябва да показва правилен max known за Bard level 10', async ({ page }) => {
+    // Bard level 10 има 14 known spells
+    await page.locator('#caster-class').selectOption('bard');
+    await page.locator('#caster-level').fill('10');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(500);
+    
+    const knownCounter = page.locator('#known-counter');
+    const text = await knownCounter.textContent();
+    expect(text).toContain('/ 14');
+  });
+
+  test('трябва да НЕ позволява добавяне на повече known spells от максимума', async ({ page }) => {
+    // Ranger level 2 има само 2 known spells
+    await page.locator('#caster-class').selectOption('ranger');
+    await page.locator('#caster-level').fill('2');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(500);
+    
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме 2 магии като known (максимумът)
+    const spells = page.locator('.spell-item');
+    await spells.nth(0).locator('.btn-known').click();
+    await page.waitForTimeout(100);
+    await spells.nth(1).locator('.btn-known').click();
+    await page.waitForTimeout(100);
+    
+    // Опитваме да маркираме трета магия
+    await spells.nth(2).locator('.btn-known').click();
+    await page.waitForTimeout(100);
+    
+    // Третата магия не трябва да е known
+    const thirdSpellKnown = await spells.nth(2).locator('.btn-known').evaluate(
+      el => el.classList.contains('known')
+    );
+    expect(thirdSpellKnown).toBe(false);
+    
+    // Counter трябва да показва 2/2
+    const knownCounter = page.locator('#known-counter');
+    const text = await knownCounter.textContent();
+    expect(text).toMatch(/2\s*\/\s*2/);
+  });
+
+  test('трябва Druid да показва Prepared counter (не Known)', async ({ page }) => {
+    // Druid е prepared caster
+    await page.locator('#caster-class').selectOption('druid');
+    await page.waitForTimeout(500);
+    
+    const preparedCounter = page.locator('#prepared-counter');
+    await expect(preparedCounter).toBeVisible();
+    
+    const knownCounter = page.locator('#known-counter');
+    await expect(knownCounter).toHaveCount(0);
+  });
+});
+
+test.describe('Смяна на клас - Confirmation Dialog', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('трябва да показва confirmation dialog при смяна на клас с научени магии', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Подготвяме да хванем диалога
+    let dialogMessage = '';
+    page.on('dialog', async dialog => {
+      dialogMessage = dialog.message();
+      await dialog.accept();
+    });
+    
+    // Сменяме класа
+    await page.locator('#caster-class').selectOption('wizard');
+    await page.waitForTimeout(500);
+    
+    // Проверяваме че е показан диалог
+    expect(dialogMessage).toContain('Сигурни ли сте');
+  });
+
+  test('трябва да изчисти магиите при потвърждение', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме че има магия в Known секцията
+    await expect(page.locator('.known-spell-item')).toHaveCount(1);
+    
+    // Приемаме диалога
+    page.on('dialog', async dialog => {
+      await dialog.accept();
+    });
+    
+    // Сменяме класа
+    await page.locator('#caster-class').selectOption('wizard');
+    await page.waitForTimeout(500);
+    
+    // Known секцията трябва да е празна
+    await expect(page.locator('.known-spell-item')).toHaveCount(0);
+  });
+
+  test('трябва да запази магиите при отказ на диалога', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    const spellItem = page.locator('.spell-item').first();
+    const spellIndex = await spellItem.getAttribute('data-index');
+    await spellItem.locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Отказваме диалога
+    page.on('dialog', async dialog => {
+      await dialog.dismiss();
+    });
+    
+    // Опитваме да сменим класа
+    await page.locator('#caster-class').selectOption('wizard');
+    await page.waitForTimeout(500);
+    
+    // Магията трябва да е все още в Known секцията
+    const knownSpell = page.locator(`.known-spell-item[data-index="${spellIndex}"]`);
+    await expect(knownSpell).toBeVisible();
+    
+    // Класът трябва да е непроменен
+    const currentClass = await page.locator('#caster-class').inputValue();
+    expect(currentClass).toBe('druid');
+  });
+
+  test('трябва да НЕ показва диалог ако няма научени магии', async ({ page }) => {
+    let dialogShown = false;
+    page.on('dialog', async dialog => {
+      dialogShown = true;
+      await dialog.accept();
+    });
+    
+    // Сменяме класа без да сме добавили магии
+    await page.locator('#caster-class').selectOption('wizard');
+    await page.waitForTimeout(500);
+    
+    // Не трябва да е показан диалог
+    expect(dialogShown).toBe(false);
+    
+    // Класът трябва да се е сменил
+    const currentClass = await page.locator('#caster-class').inputValue();
+    expect(currentClass).toBe('wizard');
+  });
+
+  test('трябва да изчисти и prepared магиите при смяна на клас', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known и prepared
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    await page.locator('.known-spell-item').first().locator('.btn-prepared').click();
+    await page.waitForTimeout(200);
+    
+    // Проверяваме prepared count
+    let preparedText = await page.locator('#prepared-counter').textContent();
+    expect(preparedText).toMatch(/^1\s*\//);
+    
+    // Приемаме диалога
+    page.on('dialog', async dialog => {
+      await dialog.accept();
+    });
+    
+    // Сменяме класа
+    await page.locator('#caster-class').selectOption('wizard');
+    await page.waitForTimeout(500);
+    
+    // Prepared count трябва да е 0
+    preparedText = await page.locator('#prepared-counter').textContent();
+    expect(preparedText).toMatch(/^0\s*\//);
+  });
+
+  test('трябва да изчисти акордеона при смяна на клас', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(200);
+    
+    // Приемаме диалога
+    page.on('dialog', async dialog => {
+      await dialog.accept();
+    });
+    
+    // Сменяме класа
+    await page.locator('#caster-class').selectOption('wizard');
+    await page.waitForTimeout(500);
+    
+    // Филтърът трябва да е reset-нат
+    const filterValue = await page.locator('#filter-level').inputValue();
+    expect(filterValue).toBe('');
+    
+    // Акордеонът трябва да показва съобщение за избор на ниво
+    const message = page.locator('#spells-root .small');
+    await expect(message).toContainText('Изберете ниво');
+  });
+});
+

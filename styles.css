@@ -272,3 +272,37 @@ button {
   margin-top: 0.25rem;
 }
 
+/* Known Spells секция */
+.known-spells-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.known-spell-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #333;
+  border-radius: 0.35rem;
+  background: #131313;
+}
+.known-spell-item:hover {
+  background: #1a1a1a;
+}
+.known-spell-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.known-spell-name {
+  font-weight: 600;
+  color: #c8f7c5;
+}
+.known-spell-level {
+  font-size: 0.75rem;
+  color: #888;
+}
+

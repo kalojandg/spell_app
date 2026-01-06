@@ -1,3 +1,33 @@
+function updatePreparedCounter() {
+  const counter = document.getElementById('prepared-counter');
+  if (counter) {
+    const max = getMaxPreparedSpells();
+    counter.textContent = `${getPreparedCount()} / ${max !== null ? max : '∞'}`;
+  }
+}
+
+function updateKnownCounter() {
+  const counter = document.getElementById('known-counter');
+  if (counter) {
+    const max = getMaxKnownSpells();
+    counter.textContent = `${getKnownCount()} / ${max !== null ? max : '∞'}`;
+  }
+}
+
+function getSpellCounterHTML() {
+  const type = getSpellcastingType();
+  
+  if (type === 'known') {
+    // Known casters показват Known Spells counter
+    const maxKnown = getMaxKnownSpells();
+    return `Known Spells: <strong id="known-counter">${getKnownCount()} / ${maxKnown !== null ? maxKnown : '∞'}</strong>`;
+  } else {
+    // Prepared casters показват Prepared Spells counter
+    const maxPrepared = getMaxPreparedSpells();
+    return `Prepared Spells: <strong id="prepared-counter">${getPreparedCount()} / ${maxPrepared !== null ? maxPrepared : '∞'}</strong>`;
+  }
+}
+
 async function renderCaster() {
   const root = document.getElementById('caster-root');
   const { className, level, abilityMod, profBonus } = state.caster;
@@ -48,14 +78,43 @@ async function renderCaster() {
     </div>
     <div class="derived">
       Spell Attack Bonus: <strong>+${getSpellAttackBonus()}</strong><br>
-      Spell Save DC: <strong>${getSpellSaveDC()}</strong>
+      Spell Save DC: <strong>${getSpellSaveDC()}</strong><br>
+      ${getSpellCounterHTML()}
     </div>
   `;
 
   root.querySelector('#caster-class').addEventListener('change', async e => {
-    updateCaster({ className: e.target.value });
+    const newClass = e.target.value;
+    const oldClass = state.caster.className;
+    
+    // Проверяваме дали има научени магии
+    const hasSpells = getKnownCount() > 0;
+    
+    if (hasSpells) {
+      // Показваме confirmation dialog
+      const confirmed = confirm(
+        `Смяната на класа от ${oldClass.charAt(0).toUpperCase() + oldClass.slice(1)} към ${newClass.charAt(0).toUpperCase() + newClass.slice(1)} ще изтрие всички научени и подготвени магии.\n\nСигурни ли сте?`
+      );
+      
+      if (!confirmed) {
+        // Връщаме старата стойност
+        e.target.value = oldClass;
+        return;
+      }
+      
+      // Изчистваме магиите и reset-ваме UI
+      clearAllSpells();
+      const filterEl = document.getElementById('filter-level');
+      if (filterEl) filterEl.value = '';
+      const searchEl = document.getElementById('spell-search');
+      if (searchEl) searchEl.value = '';
+    }
+    
+    updateCaster({ className: newClass });
     await renderCaster();
     await renderSlots();
+    renderSpells();
+    renderKnownSpells();
   });
   root.querySelector('#caster-level').addEventListener('change', async e => {
     const val = Number(e.target.value) || 1;

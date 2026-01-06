@@ -1,5 +1,26 @@
 const STORAGE_KEY = 'spellbook-state-v2';
 
+// Known spells по ниво за класовете с фиксиран брой known spells
+// Индексът е character level, стойността е брой known spells
+const KNOWN_SPELLS_TABLE = {
+  sorcerer: [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 13, 14, 14, 15, 15, 15, 15],
+  bard:     [0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 15, 16, 18, 19, 19, 20, 22, 22, 22],
+  ranger:   [0, 0, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11],
+  warlock:  [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15],
+};
+
+// Mapping за типа на spellcasting по клас
+const CLASS_SPELLCASTING = {
+  cleric:   { type: 'prepared', formula: 'level + mod' },
+  druid:    { type: 'prepared', formula: 'level + mod' },
+  paladin:  { type: 'prepared', formula: 'half-level + mod' },
+  wizard:   { type: 'spellbook', formula: 'level + mod' },
+  sorcerer: { type: 'known' },
+  bard:     { type: 'known' },
+  ranger:   { type: 'known' },
+  warlock:  { type: 'known' },
+};
+
 const defaultState = {
   caster: {
     className: 'druid',
@@ -34,8 +55,12 @@ function loadState() {
     if (!raw) return structuredClone(defaultState);
     const parsed = JSON.parse(raw);
     const merged = mergeDeep(structuredClone(defaultState), parsed);
-    // Винаги изчистваме магиите при зареждане на страницата
-    merged.spells = {};
+    // Запазваме known/prepared статусите, но изчистваме временните данни
+    // Изчистваме loadedForLevel и data, но запазваме known/prepared
+    for (const index of Object.keys(merged.spells)) {
+      merged.spells[index].loadedForLevel = null;
+      merged.spells[index].data = null;
+    }
     merged.ui.expandedSpellIndex = null;
     merged.ui.filterLevel = null;
     merged.ui.searchQuery = '';
@@ -73,6 +98,56 @@ function getSpellAttackBonus() {
 
 function getSpellSaveDC() {
   return 8 + state.caster.abilityMod + state.caster.profBonus;
+}
+
+function getMaxPreparedSpells() {
+  const { className, level, abilityMod } = state.caster;
+  const classInfo = CLASS_SPELLCASTING[className];
+  
+  if (!classInfo || classInfo.type === 'known') {
+    // Known casters нямат prepared spells limit по този начин
+    return null;
+  }
+  
+  let max;
+  if (classInfo.formula === 'level + mod') {
+    max = level + abilityMod;
+  } else if (classInfo.formula === 'half-level + mod') {
+    // Paladin: floor(level/2) + mod
+    max = Math.floor(level / 2) + abilityMod;
+  } else {
+    max = level + abilityMod;
+  }
+  
+  // Minimum е 1
+  return Math.max(1, max);
+}
+
+function getPreparedCount() {
+  return Object.values(state.spells).filter(s => s.prepared).length;
+}
+
+function getKnownCount() {
+  return Object.values(state.spells).filter(s => s.known).length;
+}
+
+function getMaxKnownSpells() {
+  const { className, level } = state.caster;
+  const table = KNOWN_SPELLS_TABLE[className];
+  
+  if (!table) {
+    // Prepared casters нямат known spells limit
+    return null;
+  }
+  
+  // Clamp level между 1 и 20
+  const clampedLevel = Math.max(1, Math.min(20, level));
+  return table[clampedLevel] || 0;
+}
+
+function getSpellcastingType() {
+  const classInfo = CLASS_SPELLCASTING[state.caster.className];
+  return classInfo ? classInfo.type : 'prepared';
 }
 
 /* ---------- Mutations ---------- */
@@ -156,6 +231,18 @@ function upsertSpellData(index, data) {
 function toggleSpellKnown(index) {
   const s = state.spells[index];
   if (!s) return;
+  
+  // Ако искаме да добавим към known (не е known в момента)
+  if (!s.known) {
+    const max = getMaxKnownSpells();
+    const current = getKnownCount();
+    // Проверяваме дали сме достигнали максимума (само за known casters)
+    if (max !== null && current >= max) {
+      // Не може да научим повече магии
+      return;
+    }
+  }
+  
   s.known = !s.known;
   if (!s.known) s.prepared = false;
   saveState();
@@ -164,6 +251,18 @@ function toggleSpellKnown(index) {
 function toggleSpellPrepared(index) {
   const s = state.spells[index];
   if (!s || !s.known) return;
+  
+  // Ако искаме да подготвим (не е prepared в момента)
+  if (!s.prepared) {
+    const max = getMaxPreparedSpells();
+    const current = getPreparedCount();
+    // Проверяваме дали сме достигнали максимума
+    if (max !== null && current >= max) {
+      // Не може да подготвим повече магии
+      return;
+    }
+  }
+  
   s.prepared = !s.prepared;
   saveState();
 }
@@ -191,5 +290,13 @@ function setExpandedSpell(index) {
 function setSearchQuery(query) {
   state.ui.searchQuery = query || '';
   // Не запазваме в localStorage - търсенето е временно
+}
+
+function clearAllSpells() {
+  state.spells = {};
+  state.ui.expandedSpellIndex = null;
+  state.ui.filterLevel = null;
+  state.ui.searchQuery = '';
+  saveState();
 }
 

@@ -5,6 +5,7 @@ async function renderAll() {
   await renderSlots();
   // Показваме празен акордеон при инициализация
   renderSpells();
+  renderKnownSpells();
   renderDetails();
 
   const filterEl = document.getElementById('filter-level');
@@ -27,16 +28,16 @@ async function renderAll() {
     if (value === '') {
       // Ако е избрано "Изберете", не зареждаме магии
       setFilterLevel(null);
-      // Изчистваме акордеона и магиите от state
       state.ui.expandedSpellIndex = null;
-      // Изчистваме всички магии от state
-      state.spells = {};
+      // Изчистваме loadedForLevel за всички магии (но запазваме known/prepared)
+      for (const index of Object.keys(state.spells)) {
+        state.spells[index].loadedForLevel = null;
+      }
       saveState();
       renderSpells();
     } else {
       const lvl = Number(value) || 0;
       setFilterLevel(lvl);
-      // Изчистваме всички магии и зареждаме нови от API
       await loadSpellsForCurrentFilter();
     }
   });
@@ -47,15 +48,6 @@ async function renderAll() {
     renderSpells();
   });
 }
-
-// Изчистваме магиите при unload на страницата
-window.addEventListener('beforeunload', () => {
-  state.spells = {};
-  state.ui.expandedSpellIndex = null;
-  state.ui.filterLevel = null;
-  state.ui.searchQuery = '';
-  saveState();
-});
 
 document.addEventListener('DOMContentLoaded', renderAll);
 

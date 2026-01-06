@@ -78,9 +78,6 @@ function renderSpells() {
                   <button class="btn-xs btn-known ${s.known ? 'badge known' : ''}" type="button">
                     Known
                   </button>
-                  <button class="btn-xs btn-prepared ${s.prepared ? 'badge prepared' : ''}" type="button">
-                    Prep
-                  </button>
                 </div>
               </div>
               <div class="spell-tags">
@@ -159,10 +156,9 @@ function handleSpellContainerClick(e) {
     e.stopPropagation();
     toggleSpellKnown(index);
     renderSpells();
-  } else if (e.target.classList.contains('btn-prepared')) {
-    e.stopPropagation();
-    toggleSpellPrepared(index);
-    renderSpells();
+    renderKnownSpells();
+    updatePreparedCounter();
+    updateKnownCounter();
   }
 }
 
@@ -181,11 +177,14 @@ async function loadSpellsForCurrentFilter() {
   // Ако няма избрано ниво, не зареждаме магии
   if (level === null || level === undefined) {
     renderSpells();
+    renderKnownSpells();
     return;
   }
 
-  // Изчистваме ВСИЧКИ магии преди да заредим нови
-  state.spells = {};
+  // Изчистваме loadedForLevel за всички магии (но запазваме known/prepared)
+  for (const index of Object.keys(state.spells)) {
+    state.spells[index].loadedForLevel = null;
+  }
   state.ui.expandedSpellIndex = null;
   saveState();
 
@@ -195,6 +194,7 @@ async function loadSpellsForCurrentFilter() {
     if (!refs || refs.length === 0) {
       // Ако няма магии за това ниво, показваме съобщение
       renderSpells();
+      renderKnownSpells();
       return;
     }
     
@@ -208,10 +208,79 @@ async function loadSpellsForCurrentFilter() {
     
     // Рендерираме акордеона с новите магии
     renderSpells();
+    renderKnownSpells();
   } catch (err) {
     console.error(err);
     errorEl.textContent = 'Грешка при зареждане на магии.';
     renderSpells();
+    renderKnownSpells();
+  }
+}
+
+function renderKnownSpells() {
+  const root = document.getElementById('known-spells-root');
+  if (!root) return;
+  
+  // Филтрираме само known магии
+  const knownSpells = Object.entries(state.spells)
+    .filter(([, s]) => s.known)
+    .map(([index, s]) => ({ index, ...s }));
+  
+  if (knownSpells.length === 0) {
+    root.innerHTML = '<div class="small">Няма научени магии.</div>';
+    return;
+  }
+  
+  // Сортираме по ниво, после по име
+  knownSpells.sort((a, b) => {
+    const levelA = a.data?.level ?? 99;
+    const levelB = b.data?.level ?? 99;
+    if (levelA !== levelB) return levelA - levelB;
+    const nameA = (a.data?.name || a.ref?.name || a.index).toLowerCase();
+    const nameB = (b.data?.name || b.ref?.name || b.index).toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+  
+  root.innerHTML = `
+    <div class="known-spells-container">
+      ${knownSpells.map(s => {
+        const name = s.data?.name || s.ref?.name || s.index;
+        const level = s.data?.level ?? '?';
+        
+        return `
+          <div class="known-spell-item" data-index="${s.index}">
+            <div class="known-spell-info">
+              <span class="known-spell-name">${name}</span>
+              <span class="known-spell-level">Lvl ${level}</span>
+            </div>
+            <button class="btn-xs btn-prepared ${s.prepared ? 'badge prepared' : ''}" type="button">
+              Prep
+            </button>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+  
+  // Event delegation за Prep бутон
+  const container = root.querySelector('.known-spells-container');
+  if (container) {
+    const newContainer = container.cloneNode(true);
+    container.parentNode.replaceChild(newContainer, container);
+    newContainer.addEventListener('click', handleKnownSpellClick);
+  }
+}
+
+function handleKnownSpellClick(e) {
+  const item = e.target.closest('.known-spell-item');
+  if (!item) return;
+  const index = item.dataset.index;
+  
+  if (e.target.classList.contains('btn-prepared')) {
+    e.stopPropagation();
+    toggleSpellPrepared(index);
+    renderKnownSpells();
+    updatePreparedCounter();
   }
 }
 
