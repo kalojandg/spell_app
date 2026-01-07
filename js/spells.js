@@ -155,6 +155,13 @@ function handleSpellContainerClick(e) {
   if (e.target.classList.contains('btn-known')) {
     e.stopPropagation();
     toggleSpellKnown(index);
+    
+    // Ако магията е маркирана като known и няма данни, зареждаме ги
+    const spell = state.spells[index];
+    if (spell && spell.known && !spell.data) {
+      ensureSpellDetails(index).catch(console.error);
+    }
+    
     renderSpells();
     renderKnownSpells();
     updatePreparedCounter();
@@ -300,10 +307,12 @@ async function ensureSpellDetails(index) {
     // Винаги обновяваме рендера след зареждане на детайли
     // Не премахваме магията - тя трябва да остане видима, защото е заредена за текущото ниво
     renderSpells();
+    renderKnownSpells(); // Обновяваме и Known Spells за да покажем нивото
   } catch (err) {
     console.error(err);
     // Обновяваме рендера дори при грешка
     renderSpells();
+    renderKnownSpells();
   }
 }
 

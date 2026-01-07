@@ -637,6 +637,11 @@ test.describe('Spells - Акордеон функционалност', () => {
   });
 
   test('трябва да показва детайли за upcast магии без да ги премахва', async ({ page }) => {
+    // Първо увеличаваме caster level за да имаме достъп до ниво 3 магии
+    await page.locator('#caster-level').fill('5');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(300);
+    
     // Зареждаме магии за ниво 3 (което може да съдържа upcast магии)
     await page.locator('#filter-level').selectOption('3');
     await page.waitForSelector('.spell-item', { timeout: 15000 });
@@ -1631,6 +1636,139 @@ test.describe('Rest - Възстановяване на слотове', () => {
     
     expect(dialogMessage.toLowerCase()).toContain('prepare');
     expect(dialogMessage.toLowerCase()).toContain('spells');
+  });
+});
+
+test.describe('Spell Level Dropdown - Филтрация по налични spell slots', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('Dropdown-ът трябва да показва само нивата с налични spell slots', async ({ page }) => {
+    // Default е druid level 4, mock връща slots за:
+    // level >= 1 -> slot 1, level >= 3 -> slot 2, level >= 5 -> slot 3, level >= 7 -> slot 4
+    // За level 4: slots 1 и 2 (защото 4 >= 1 и 4 >= 3, но 4 < 5)
+    await page.waitForTimeout(500); // Чакаме API да върне slots
+    const options = await page.locator('#filter-level option:not([value=""])').allTextContents();
+    expect(options).toEqual(['1-во', '2-ро']);
+  });
+
+  test('Level 1 caster трябва да вижда само 1-во ниво slot', async ({ page }) => {
+    await page.locator('#caster-level').fill('1');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800); // Чакаме API за slots
+    
+    const options = await page.locator('#filter-level option:not([value=""])').allTextContents();
+    expect(options).toEqual(['1-во']);
+  });
+
+  test('Level 5 caster трябва да вижда slots до 3-то ниво', async ({ page }) => {
+    await page.locator('#caster-level').fill('5');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800);
+    
+    const options = await page.locator('#filter-level option:not([value=""])').allTextContents();
+    expect(options).toEqual(['1-во', '2-ро', '3-то']);
+  });
+
+  test('Level 7 caster трябва да вижда slots до 4-то ниво', async ({ page }) => {
+    await page.locator('#caster-level').fill('7');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800);
+    
+    const options = await page.locator('#filter-level option:not([value=""])').allTextContents();
+    expect(options).toEqual(['1-во', '2-ро', '3-то', '4-то']);
+  });
+
+  test('При смяна на нивото dropdown-ът трябва да се обнови според новите slots', async ({ page }) => {
+    await page.locator('#caster-level').fill('1');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800);
+    
+    let options = await page.locator('#filter-level option:not([value=""])').allTextContents();
+    expect(options).toHaveLength(1);
+    
+    // Сменяме нивото на 5
+    await page.locator('#caster-level').fill('5');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800);
+    
+    options = await page.locator('#filter-level option:not([value=""])').allTextContents();
+    expect(options).toHaveLength(3);
+  });
+
+  test('Избраното ниво трябва да се нулира ако slot-а вече не е наличен', async ({ page }) => {
+    // Започваме с level 7 (има slots 1-4)
+    await page.locator('#caster-level').fill('7');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800);
+    
+    // Избираме 4-то ниво магии
+    await page.locator('#filter-level').selectOption('4');
+    await page.waitForTimeout(200);
+    
+    // Намаляме нивото на 3 (няма 4-то ниво slot)
+    await page.locator('#caster-level').fill('3');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800);
+    
+    // Dropdown-ът трябва да е нулиран на "Изберете"
+    const selectedValue = await page.locator('#filter-level').inputValue();
+    expect(selectedValue).toBe('');
+  });
+});
+
+test.describe('Known Spells - Показване на минимално ниво', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForTimeout(500);
+  });
+
+  test('Known spell трябва автоматично да зареди и покаже минималното ниво', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме първата магия като known - това автоматично зарежда детайлите
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    
+    // Чакаме детайлите да се заредят (API call)
+    await page.waitForTimeout(1500);
+    
+    // Проверяваме че Known spell показва "Lvl 1" (от mock данните)
+    const knownSpell = page.locator('.known-spell-item').first();
+    const levelText = await knownSpell.locator('.known-spell-level').textContent();
+    expect(levelText).toContain('1');
+  });
+
+  test('Known spell без заредени данни трябва да показва "Lvl ?"', async ({ page }) => {
+    // Зареждаме магии
+    await page.locator('#filter-level').selectOption('1');
+    await page.waitForSelector('.spell-item', { timeout: 5000 });
+    
+    // Маркираме магия като known
+    await page.locator('.spell-item').first().locator('.btn-known').click();
+    await page.waitForTimeout(100);
+    
+    // Веднага изчистваме data преди API да върне отговор
+    await page.evaluate(() => {
+      for (const key of Object.keys(state.spells)) {
+        state.spells[key].data = null;
+      }
+      renderKnownSpells();
+    });
+    
+    // Проверяваме че показва "Lvl ?" когато няма данни
+    const knownSpell = page.locator('.known-spell-item').first();
+    const levelText = await knownSpell.locator('.known-spell-level').textContent();
+    expect(levelText).toContain('?');
   });
 });
 

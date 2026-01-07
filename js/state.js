@@ -11,15 +11,54 @@ const KNOWN_SPELLS_TABLE = {
 
 // Mapping за типа на spellcasting по клас
 const CLASS_SPELLCASTING = {
-  cleric:   { type: 'prepared', formula: 'level + mod' },
-  druid:    { type: 'prepared', formula: 'level + mod' },
-  paladin:  { type: 'prepared', formula: 'half-level + mod' },
-  wizard:   { type: 'spellbook', formula: 'level + mod' },
-  sorcerer: { type: 'known' },
-  bard:     { type: 'known' },
-  ranger:   { type: 'known' },
-  warlock:  { type: 'known' },
+  cleric:   { type: 'prepared', formula: 'level + mod', casterType: 'full' },
+  druid:    { type: 'prepared', formula: 'level + mod', casterType: 'full' },
+  paladin:  { type: 'prepared', formula: 'half-level + mod', casterType: 'half' },
+  wizard:   { type: 'spellbook', formula: 'level + mod', casterType: 'full' },
+  sorcerer: { type: 'known', casterType: 'full' },
+  bard:     { type: 'known', casterType: 'full' },
+  ranger:   { type: 'known', casterType: 'half' },
+  warlock:  { type: 'known', casterType: 'pact' },
 };
+
+// Максимално ниво на магии спрямо character level
+// Full casters: 1->1, 3->2, 5->3, 7->4, 9->5, 11->6, 13->7, 15->8, 17->9
+// Half casters: 2->1, 5->2, 9->3, 13->4, 17->5
+// Warlock (pact): 1->1, 3->2, 5->3, 7->4, 9->5 (max 5th level spells)
+function getMaxSpellLevel() {
+  const { className, level } = state.caster;
+  const classInfo = CLASS_SPELLCASTING[className];
+  if (!classInfo) return 1;
+
+  if (classInfo.casterType === 'full') {
+    // Full caster progression
+    if (level >= 17) return 9;
+    if (level >= 15) return 8;
+    if (level >= 13) return 7;
+    if (level >= 11) return 6;
+    if (level >= 9) return 5;
+    if (level >= 7) return 4;
+    if (level >= 5) return 3;
+    if (level >= 3) return 2;
+    return 1;
+  } else if (classInfo.casterType === 'half') {
+    // Half caster progression (Paladin, Ranger)
+    if (level >= 17) return 5;
+    if (level >= 13) return 4;
+    if (level >= 9) return 3;
+    if (level >= 5) return 2;
+    if (level >= 2) return 1;
+    return 0; // Paladin/Ranger don't get spells at level 1
+  } else if (classInfo.casterType === 'pact') {
+    // Warlock pact magic progression
+    if (level >= 9) return 5;
+    if (level >= 7) return 4;
+    if (level >= 5) return 3;
+    if (level >= 3) return 2;
+    return 1;
+  }
+  return 1;
+}
 
 const defaultState = {
   caster: {

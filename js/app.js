@@ -134,6 +134,42 @@ function handleImport(file) {
   reader.readAsText(file);
 }
 
+// Обновява dropdown опциите за spell level спрямо наличните spell slots
+function updateSpellLevelDropdown() {
+  const filterEl = document.getElementById('filter-level');
+  if (!filterEl) return;
+  
+  const currentValue = filterEl.value;
+  
+  // Взимаме реалните налични слотове от state.slots
+  const availableLevels = Object.keys(state.slots)
+    .map(n => Number(n))
+    .filter(n => state.slots[n] && state.slots[n].max > 0)
+    .sort((a, b) => a - b);
+  
+  const labels = ['', '1-во', '2-ро', '3-то', '4-то', '5-то', '6-то', '7-мо', '8-мо', '9-то'];
+  
+  filterEl.innerHTML = '<option value="">Изберете</option>';
+  
+  for (const level of availableLevels) {
+    const option = document.createElement('option');
+    option.value = String(level);
+    option.textContent = labels[level];
+    filterEl.appendChild(option);
+  }
+  
+  // Ако текущо избраното ниво вече не е налично, нулираме
+  if (currentValue && !availableLevels.includes(Number(currentValue))) {
+    filterEl.value = '';
+    setFilterLevel(null);
+    state.ui.expandedSpellIndex = null;
+    saveState();
+    renderSpells();
+  } else if (currentValue) {
+    filterEl.value = currentValue;
+  }
+}
+
 async function renderAll() {
   await renderCaster();
   await renderSlots();
@@ -141,6 +177,9 @@ async function renderAll() {
   renderSpells();
   renderKnownSpells();
   renderDetails();
+
+  // Обновяваме dropdown опциите
+  updateSpellLevelDropdown();
 
   const filterEl = document.getElementById('filter-level');
   const searchEl = document.getElementById('spell-search');

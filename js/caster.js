@@ -113,6 +113,7 @@ async function renderCaster() {
     updateCaster({ className: newClass });
     await renderCaster();
     await renderSlots();
+    updateSpellLevelDropdown();
     renderSpells();
     renderKnownSpells();
   });
@@ -121,6 +122,7 @@ async function renderCaster() {
     updateCaster({ level: val });
     await renderCaster();
     await renderSlots();
+    updateSpellLevelDropdown();
   });
   root.querySelector('#caster-ability-mod').addEventListener('change', e => {
     const val = Number(e.target.value) || 0;

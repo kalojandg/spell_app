@@ -28,6 +28,11 @@ async function renderSlots() {
       }
     }
     saveState();
+    
+    // Обновяваме dropdown-а след като slots са заредени
+    if (typeof updateSpellLevelDropdown === 'function') {
+      updateSpellLevelDropdown();
+    }
   } catch (err) {
     console.error('Грешка при зареждане на spell slots:', err);
     // При грешка използваме текущите стойности
