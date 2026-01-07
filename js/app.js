@@ -225,7 +225,7 @@ if ('serviceWorker' in navigator && !window.__PLAYWRIGHT_TEST__) {
   // Първо изчистваме стари кешове
   caches.keys().then(keys => {
     keys.forEach(key => {
-      if (key !== 'spellbook-v3') {
+      if (key !== 'spellbook-v5') {
         caches.delete(key);
       }
     });

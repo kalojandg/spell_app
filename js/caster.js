@@ -88,9 +88,9 @@ async function renderCaster() {
     const oldClass = state.caster.className;
     
     // Проверяваме дали има научени магии
-    const hasSpells = getKnownCount() > 0;
+    const hasKnownSpells = getKnownCount() > 0;
     
-    if (hasSpells) {
+    if (hasKnownSpells) {
       // Показваме confirmation dialog
       const confirmed = confirm(
         `Смяната на класа от ${oldClass.charAt(0).toUpperCase() + oldClass.slice(1)} към ${newClass.charAt(0).toUpperCase() + newClass.slice(1)} ще изтрие всички научени и подготвени магии.\n\nСигурни ли сте?`
@@ -102,13 +102,26 @@ async function renderCaster() {
         return;
       }
       
-      // Изчистваме магиите и reset-ваме UI
+      // Изчистваме всичко - включително known/prepared
       clearAllSpells();
-      const filterEl = document.getElementById('filter-level');
-      if (filterEl) filterEl.value = '';
-      const searchEl = document.getElementById('spell-search');
-      if (searchEl) searchEl.value = '';
+    } else {
+      // Няма known магии, но трябва да изчистим заредените магии за стария клас
+      // Изчистваме loadedForLevel за всички магии
+      for (const index of Object.keys(state.spells)) {
+        state.spells[index].loadedForLevel = null;
+        state.spells[index].data = null;
+      }
+      state.ui.filterLevel = null;
+      state.ui.expandedSpellIndex = null;
+      state.ui.searchQuery = '';
+      saveState();
     }
+    
+    // Reset-ваме UI елементите
+    const filterEl = document.getElementById('filter-level');
+    if (filterEl) filterEl.value = '';
+    const searchEl = document.getElementById('spell-search');
+    if (searchEl) searchEl.value = '';
     
     updateCaster({ className: newClass });
     await renderCaster();

@@ -85,6 +85,20 @@ const mockClassLevel = (level) => ({
   }
 });
 
+// Mock за всички магии на класа (използва се за филтриране)
+const mockAllClassSpells = {
+  count: 7,
+  results: [
+    { index: 'cure-wounds', name: 'Cure Wounds', url: '/api/spells/cure-wounds' },
+    { index: 'healing-word', name: 'Healing Word', url: '/api/spells/healing-word' },
+    { index: 'entangle', name: 'Entangle', url: '/api/spells/entangle' },
+    { index: 'lesser-restoration', name: 'Lesser Restoration', url: '/api/spells/lesser-restoration' },
+    { index: 'moonbeam', name: 'Moonbeam', url: '/api/spells/moonbeam' },
+    { index: 'call-lightning', name: 'Call Lightning', url: '/api/spells/call-lightning' },
+    { index: 'dispel-magic', name: 'Dispel Magic', url: '/api/spells/dispel-magic' },
+  ]
+};
+
 // Helper функция за setup на API mocks
 async function setupApiMocks(page) {
   // Маркираме че сме в тест среда (за да не се регистрира service worker)
@@ -102,6 +116,24 @@ async function setupApiMocks(page) {
     }
   });
 
+  // Нов endpoint: всички магии на класа
+  await page.route('**/api/classes/*/spells', async (route) => {
+    await route.fulfill({ json: mockAllClassSpells });
+  });
+
+  // Нов endpoint: всички магии по spell level
+  await page.route('**/api/spells?level=*', async (route) => {
+    const url = route.request().url();
+    const levelMatch = url.match(/level=(\d+)/);
+    const level = levelMatch ? parseInt(levelMatch[1]) : 1;
+    
+    let response = mockSpellsLevel1;
+    if (level === 2) response = mockSpellsLevel2;
+    else if (level === 3) response = mockSpellsLevel3;
+    await route.fulfill({ json: response });
+  });
+
+  // Стар endpoint (за съвместимост)
   await page.route('**/api/classes/*/levels/*/spells', async (route) => {
     const url = route.request().url();
     let response = mockSpellsLevel1;
@@ -112,7 +144,9 @@ async function setupApiMocks(page) {
 
   await page.route('**/api/spells/*', async (route) => {
     const url = route.request().url();
-    const spellIndex = url.split('/').pop();
+    // Игнорираме query параметри
+    const path = url.split('?')[0];
+    const spellIndex = path.split('/').pop();
     const details = mockSpellDetails[spellIndex] || mockSpellDetails['cure-wounds'];
     await route.fulfill({ json: details });
   });

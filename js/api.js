@@ -1,13 +1,33 @@
 const API_BASE = 'https://www.dnd5eapi.co';
 
-async function fetchClassSpellsAtLevel(className, level) {
-  const url = `${API_BASE}/api/classes/${className}/levels/${level}/spells`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`API error: ${res.status}`);
+// Кеш за класовите магии (index set)
+const classSpellsCache = {};
+
+async function fetchClassSpellsAtLevel(className, spellLevel) {
+  // Ако нямаме кеширани магии за този клас, зареждаме всички
+  if (!classSpellsCache[className]) {
+    const url = `${API_BASE}/api/classes/${className}/spells`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status}`);
+    }
+    const data = await res.json();
+    // Запазваме като Set от индекси за бързо търсене
+    classSpellsCache[className] = new Set((data.results || []).map(s => s.index));
   }
-  const data = await res.json();
-  return data.results || [];
+  
+  // Зареждаме всички магии от този spell level
+  const levelUrl = `${API_BASE}/api/spells?level=${spellLevel}`;
+  const levelRes = await fetch(levelUrl);
+  if (!levelRes.ok) {
+    throw new Error(`API error: ${levelRes.status}`);
+  }
+  const levelData = await levelRes.json();
+  const allLevelSpells = levelData.results || [];
+  
+  // Филтрираме само магиите, които са налични за класа
+  const classSpellSet = classSpellsCache[className];
+  return allLevelSpells.filter(spell => classSpellSet.has(spell.index));
 }
 
 async function fetchSpellDetails(index) {
