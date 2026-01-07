@@ -44,11 +44,18 @@ async function fetchSpellSlots(className, level) {
     if (slotCount > 0) {
       // Запазваме текущото използвано количество, ако вече съществува
       const existing = state.slots[i];
+      // Или използваме savedUsed ако има (след page refresh)
+      const savedUsed = state._savedUsed ? (state._savedUsed[i] || 0) : 0;
       slots[i] = {
         max: slotCount,
-        used: existing ? existing.used : 0,
+        used: existing ? existing.used : savedUsed,
       };
     }
+  }
+  
+  // Изчистваме savedUsed след като е използвано
+  if (state._savedUsed) {
+    delete state._savedUsed;
   }
   
   return slots;

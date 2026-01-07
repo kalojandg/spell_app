@@ -103,6 +103,16 @@ function loadState() {
     merged.ui.expandedSpellIndex = null;
     merged.ui.filterLevel = null;
     merged.ui.searchQuery = '';
+    
+    // Изчистваме slots.max за да се обновят от API
+    // Запазваме само used стойностите
+    const savedUsed = {};
+    for (const level of Object.keys(merged.slots)) {
+      savedUsed[level] = merged.slots[level].used || 0;
+    }
+    merged.slots = {};
+    merged._savedUsed = savedUsed; // Временно съхраняваме used за после
+    
     return merged;
   } catch {
     return structuredClone(defaultState);

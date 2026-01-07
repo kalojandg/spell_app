@@ -1652,8 +1652,32 @@ test.describe('Spell Level Dropdown - Филтрация по налични spe
     // Default е druid level 4, mock връща slots за:
     // level >= 1 -> slot 1, level >= 3 -> slot 2, level >= 5 -> slot 3, level >= 7 -> slot 4
     // За level 4: slots 1 и 2 (защото 4 >= 1 и 4 >= 3, но 4 < 5)
-    await page.waitForTimeout(500); // Чакаме API да върне slots
+    await page.waitForTimeout(800); // Чакаме API да върне slots
     const options = await page.locator('#filter-level option:not([value=""])').allTextContents();
+    expect(options).toEqual(['1-во', '2-ро']);
+  });
+
+  test('Dropdown-ът трябва да показва правилни нива след обикновен refresh (F5)', async ({ page }) => {
+    // Първо setup-ваме някакво ниво
+    await page.locator('#caster-level').fill('7');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800);
+    
+    // Проверяваме че имаме 4 нива
+    let options = await page.locator('#filter-level option:not([value=""])').allTextContents();
+    expect(options).toEqual(['1-во', '2-ро', '3-то', '4-то']);
+    
+    // Сменяме на ниво 3 и записваме в localStorage
+    await page.locator('#caster-level').fill('3');
+    await page.locator('#caster-level').blur();
+    await page.waitForTimeout(800);
+    
+    // Презареждаме страницата (обикновен refresh, mocks остават)
+    await page.reload();
+    await page.waitForTimeout(1000);
+    
+    // След refresh dropdown-ът трябва да показва само 2 нива (level 3 има slots 1 и 2)
+    options = await page.locator('#filter-level option:not([value=""])').allTextContents();
     expect(options).toEqual(['1-во', '2-ро']);
   });
 

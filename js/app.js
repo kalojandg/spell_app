@@ -222,7 +222,19 @@ function setupHeaderButtons() {
 
 // Регистрираме service worker (само в production, не в тестове)
 if ('serviceWorker' in navigator && !window.__PLAYWRIGHT_TEST__) {
-  navigator.serviceWorker.register('/sw.js').catch(err => {
+  // Първо изчистваме стари кешове
+  caches.keys().then(keys => {
+    keys.forEach(key => {
+      if (key !== 'spellbook-v3') {
+        caches.delete(key);
+      }
+    });
+  });
+  
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    // Форсираме обновяване на SW
+    reg.update();
+  }).catch(err => {
     console.log('SW registration failed:', err);
   });
 }
