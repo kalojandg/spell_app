@@ -1,15 +1,15 @@
-const CACHE_NAME = 'spellbook-v5';
+const CACHE_NAME = 'spellbook-v6';
 const ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
-  '/js/state.js?v=5',
-  '/js/api.js?v=5',
-  '/js/caster.js?v=5',
-  '/js/slots.js?v=5',
-  '/js/spells.js?v=5',
-  '/js/details.js?v=5',
-  '/js/app.js?v=5',
+  '/js/state.js?v=6',
+  '/js/api.js?v=6',
+  '/js/caster.js?v=6',
+  '/js/slots.js?v=6',
+  '/js/spells.js?v=6',
+  '/js/details.js?v=6',
+  '/js/app.js?v=6',
   '/manifest.json'
 ];
 

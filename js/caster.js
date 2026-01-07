@@ -123,6 +123,11 @@ async function renderCaster() {
     const searchEl = document.getElementById('spell-search');
     if (searchEl) searchEl.value = '';
     
+    // Reset-ваме слотовете (като дълга почивка)
+    for (const level of Object.keys(state.slots)) {
+      state.slots[level].used = 0;
+    }
+    
     updateCaster({ className: newClass });
     await renderCaster();
     await renderSlots();
