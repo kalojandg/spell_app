@@ -1,16 +1,18 @@
-const CACHE_NAME = 'spellbook-v7';
+const CACHE_NAME = 'spellbook-v8';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/styles.css?v=7',
-  '/js/state.js?v=7',
-  '/js/api.js?v=7',
-  '/js/caster.js?v=7',
-  '/js/slots.js?v=7',
-  '/js/spells.js?v=7',
-  '/js/details.js?v=7',
-  '/js/app.js?v=7',
-  '/manifest.json'
+  './',
+  './index.html',
+  './styles.css?v=8',
+  './js/state.js?v=8',
+  './js/api.js?v=8',
+  './js/caster.js?v=8',
+  './js/slots.js?v=8',
+  './js/spells.js?v=8',
+  './js/details.js?v=8',
+  './js/app.js?v=8',
+  './manifest.json',
+  './icons/icon-192.svg',
+  './icons/icon-512.svg'
 ];
 
 self.addEventListener('install', event => {
@@ -43,5 +45,3 @@ self.addEventListener('fetch', event => {
     caches.match(event.request).then(response => response || fetch(event.request))
   );
 });
-
-
