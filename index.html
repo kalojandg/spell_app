@@ -2,72 +2,115 @@
 <html lang="bg">
 <head>
   <meta charset="UTF-8" />
-  <title>Spellbook – Super Mini Giga</title>
+  <title>Spellbook</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#111" />
+  <meta name="theme-color" content="#0a0a0f" />
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css?v=7" />
 </head>
 <body>
-  <header>
-    <div class="header-row">
-      <h1 style="font-size: 1.1rem; margin: 0;">Spellbook – Super Mini Giga</h1>
-      <div class="header-buttons">
-        <button id="btn-rest" class="btn-header btn-rest" title="Rest">🛏️ Rest</button>
-        <button id="btn-export" class="btn-header" title="Export">📤 Export</button>
-        <button id="btn-import" class="btn-header" title="Import">📥 Import</button>
-        <input type="file" id="import-file" accept=".json" style="display: none;" />
-        <button id="btn-install" class="btn-header" title="Install PWA">📲 Install</button>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <span class="brand-icon">✦</span>
+        <h1>Spellbook</h1>
       </div>
-    </div>
-  </header>
-  <main>
-    <section id="caster-section">
-      <h2>Caster</h2>
-      <div id="caster-root"></div>
-    </section>
+      <nav class="header-actions">
+        <button id="btn-rest" class="btn btn-ghost" title="Long Rest">
+          <span class="btn-icon">☾</span>
+          <span class="btn-text">Rest</span>
+        </button>
+        <button id="btn-export" class="btn btn-ghost" title="Export">
+          <span class="btn-icon">↑</span>
+          <span class="btn-text">Export</span>
+        </button>
+        <button id="btn-import" class="btn btn-ghost" title="Import">
+          <span class="btn-icon">↓</span>
+          <span class="btn-text">Import</span>
+        </button>
+        <input type="file" id="import-file" accept=".json" hidden />
+        <button id="btn-install" class="btn btn-accent" title="Install App">
+          <span class="btn-icon">⊕</span>
+          <span class="btn-text">Install</span>
+        </button>
+      </nav>
+    </header>
 
-    <section id="slots-section">
-      <h2>Spell Slots</h2>
-      <div id="slots-root"></div>
-    </section>
+    <!-- Main Content -->
+    <main class="app-main">
+      <!-- Left Panel: Character Info -->
+      <aside class="panel panel-character">
+        <section id="caster-section" class="card">
+          <header class="card-header">
+            <h2><span class="card-icon">⚔</span> Caster</h2>
+          </header>
+          <div id="caster-root" class="card-body"></div>
+        </section>
 
-    <section id="spells-section">
-      <h2>All Spells</h2>
-      <div class="row" style="margin-bottom: 0.5rem;">
-        <label style="flex: 1;">
-          Ниво
-          <select id="filter-level">
-            <option value="">Зареждане...</option>
-          </select>
-        </label>
-      </div>
-      <div class="row" style="margin-bottom: 0.5rem;">
-        <input type="text" id="spell-search" placeholder="Търсене по име..." style="flex: 1; padding: 0.4rem; border: 1px solid #ccc; border-radius: 4px;" />
-      </div>
-      <div id="spells-root"></div>
-      <div id="spells-error" class="error"></div>
-    </section>
+        <section id="slots-section" class="card">
+          <header class="card-header">
+            <h2><span class="card-icon">◇</span> Spell Slots</h2>
+          </header>
+          <div id="slots-root" class="card-body"></div>
+        </section>
+      </aside>
 
-    <section id="known-spells-section">
-      <h2>Known Spells</h2>
-      <div id="known-spells-root"></div>
-    </section>
+      <!-- Center Panel: Spells Browser -->
+      <section class="panel panel-spells">
+        <div id="spells-section" class="card card-full">
+          <header class="card-header">
+            <h2><span class="card-icon">📖</span> Spells</h2>
+          </header>
+          <div class="card-body">
+            <div class="spell-filters">
+              <div class="filter-group">
+                <label for="filter-level">Level</label>
+                <select id="filter-level" class="select">
+                  <option value="">Select...</option>
+                </select>
+              </div>
+              <div class="filter-group filter-search">
+                <label for="spell-search">Search</label>
+                <input type="text" id="spell-search" class="input" placeholder="Търсене по име..." />
+              </div>
+            </div>
+            <div id="spells-root" class="spell-list"></div>
+            <div id="spells-error" class="error-message"></div>
+          </div>
+        </div>
+      </section>
 
-    <section id="details-section">
-      <h2>Детайли</h2>
-      <div id="details-root" class="details small">
-        Няма избрана магия.
-      </div>
-    </section>
-  </main>
+      <!-- Right Panel: Known Spells & Details -->
+      <aside class="panel panel-known">
+        <section id="known-spells-section" class="card">
+          <header class="card-header">
+            <h2><span class="card-icon">★</span> Known Spells</h2>
+          </header>
+          <div id="known-spells-root" class="card-body"></div>
+        </section>
 
-  <script src="./js/state.js?v=6"></script>
-  <script src="./js/api.js?v=6"></script>
-  <script src="./js/caster.js?v=6"></script>
-  <script src="./js/slots.js?v=6"></script>
-  <script src="./js/spells.js?v=6"></script>
-  <script src="./js/details.js?v=6"></script>
-  <script src="./js/app.js?v=6"></script>
+        <section id="details-section" class="card">
+          <header class="card-header">
+            <h2><span class="card-icon">🔮</span> Детайли</h2>
+          </header>
+          <div id="details-root" class="card-body details-content">
+            <p class="empty-state">Select a spell to view details</p>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <script src="./js/state.js?v=7"></script>
+  <script src="./js/api.js?v=7"></script>
+  <script src="./js/caster.js?v=7"></script>
+  <script src="./js/slots.js?v=7"></script>
+  <script src="./js/spells.js?v=7"></script>
+  <script src="./js/details.js?v=7"></script>
+  <script src="./js/app.js?v=7"></script>
 </body>
 </html>
